@@ -10,6 +10,7 @@ import ForgotPasswordScreen from './src/screens/auth/ForgotPasswordScreen';
 // TODO: Create MainNavigator component in src/navigation/MainNavigator.tsx
 import MainNavigator from './src/navigation/MainNavigator';
 import { useAppSelector } from './src/store/hooks';
+import { ToastProvider } from './src/context/ToastContext';
 
 const Stack = createNativeStackNavigator();
 
@@ -37,7 +38,9 @@ const AppContent = () => {
 const App = () => {
   return (
     <Provider store={store}>
-      <AppContent />
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
     </Provider>
   );
 };

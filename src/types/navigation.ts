@@ -11,21 +11,28 @@ export type SubjectStackParamList = {
   'Transport and Communication': undefined;
   UserProfile: undefined;
   'AR Learn': undefined;
+  Science: undefined;
+  SubjectDetail: { subjectId: string };
+  Lesson: { lessonId: string };
+  Quiz: { quizId: string };
 };
 
 export type SubjectScreenNames = Exclude<keyof SubjectStackParamList, 'HomeTab'>;
 
 export type RootTabParamList = {
   Home: undefined;
-  'My Lessons': undefined;
+  'My Lessons': { selectedFilter?: string } | undefined;
   Progress: undefined;
   Games: undefined;
 };
 
 export type RootStackParamList = {
+  Welcome: undefined;
+  Login: undefined;
+  Register: undefined;
   Main: undefined;
-  Auth: undefined;
-  'AR Learn': undefined;
+  Subject: { subjectId: string };
+  UserProfile: undefined;
 };
 
 export type AuthStackParamList = {
@@ -38,7 +45,6 @@ export type AuthStackParamList = {
 export type MainStackParamList = {
   Home: undefined;
   Profile: undefined;
-  Settings: undefined;
 };
 
 export interface User {

@@ -8,197 +8,184 @@ export interface Lesson {
   progress: number;
   difficulty: Difficulty;
   icon: string;
-  arEnabled?: boolean;
   subject: string;
-  isComplete?: boolean;
+  arEnabled: boolean;
+  learningObjectives: string[];
+  keyConcepts: string[];
+  activities: string[];
+  vocabulary: string[];
+  _id: string;
+  color?: string;
 }
 
-export type SubjectType = {
+export interface SubjectData {
   id: string;
-  name: string;
+  title: string;
   description: string;
   icon: string;
   color: string;
   lessons: Lesson[];
-};
+}
 
-export const subjectData: Record<string, SubjectType> = {
+export type SubjectType = 'Science' | 'Mathematics' | 'Language' | 'Social Studies' | 'Music' | 'Art';
+
+export const subjectData: Record<SubjectType, SubjectData> = {
   Science: {
     id: 'science',
-    name: 'Science',
-    description: 'Explore the wonders of the natural world through interactive lessons',
+    title: 'Science',
+    description: 'Explore the wonders of science',
     icon: 'flask',
     color: '#4CAF50',
     lessons: [
       {
         id: 'science-1',
-        title: 'Solar System Exploration',
-        description: 'Learn about planets, stars, and space phenomena in our solar system',
-        duration: '45 mins',
-        progress: 75,
-        difficulty: 'Intermediate',
-        icon: 'rocket',
-        arEnabled: true,
-        subject: 'Science',
-      },
-      {
-        id: 'science-2',
-        title: 'Human Body Systems',
-        description: 'Explore the circulatory, respiratory, and digestive systems',
-        duration: '30 mins',
-        progress: 100,
-        difficulty: 'Beginner',
-        icon: 'human',
-        subject: 'Science',
-      },
-      {
-        id: 'science-3',
-        title: 'Chemistry Basics',
-        description: 'Introduction to atoms, molecules, and chemical reactions',
-        duration: '40 mins',
-        progress: 0,
-        difficulty: 'Advanced',
-        icon: 'flask',
-        subject: 'Science',
-      },
-      {
-        id: 'science-4',
         title: 'Animal Kingdom',
-        description: 'Discover different species and their habitats',
-        duration: '35 mins',
-        progress: 25,
+        description: 'Learn about different animal species and their habitats',
+        duration: '15 min',
+        progress: 75,
         difficulty: 'Beginner',
         icon: 'paw',
         subject: 'Science',
-      },
-    ],
+        arEnabled: true,
+        learningObjectives: ['Understand animal classifications', 'Learn about habitats'],
+        keyConcepts: ['Mammals', 'Birds', 'Reptiles', 'Amphibians'],
+        activities: ['Animal matching game', 'Habitat diorama'],
+        vocabulary: ['Habitat', 'Species', 'Classification'],
+        _id: 'science-1',
+        color: '#4CAF50'
+      }
+    ]
   },
   Mathematics: {
-    id: 'mathematics',
-    name: 'Mathematics',
-    description: 'Master mathematical concepts through interactive visualizations',
+    id: 'math',
+    title: 'Mathematics',
+    description: 'Master mathematical concepts',
     icon: 'calculator',
     color: '#2196F3',
     lessons: [
       {
         id: 'math-1',
-        title: 'Geometry in 3D',
-        description: 'Explore geometric shapes and their properties in three dimensions',
-        duration: '40 mins',
-        progress: 50,
-        difficulty: 'Intermediate',
-        icon: 'cube-outline',
-        arEnabled: true,
-        subject: 'Mathematics',
-      },
-      {
-        id: 'math-2',
-        title: 'Basic Algebra',
-        description: 'Learn about variables, equations, and algebraic expressions',
-        duration: '35 mins',
+        title: 'Addition & Subtraction',
+        description: 'Practice basic math with fun examples',
+        duration: '10 min',
         progress: 100,
         difficulty: 'Beginner',
-        icon: 'function-variant',
+        icon: 'calculator',
         subject: 'Mathematics',
-      },
-      {
-        id: 'math-3',
-        title: 'Trigonometry',
-        description: 'Study angles, triangles, and trigonometric functions',
-        duration: '45 mins',
-        progress: 0,
-        difficulty: 'Advanced',
-        icon: 'triangle-outline',
-        subject: 'Mathematics',
-      },
-      {
-        id: 'math-4',
-        title: 'Statistics',
-        description: 'Introduction to data analysis and probability',
-        duration: '30 mins',
-        progress: 25,
-        difficulty: 'Intermediate',
-        icon: 'chart-bell-curve',
-        subject: 'Mathematics',
-      },
-    ],
+        arEnabled: false,
+        learningObjectives: ['Basic addition', 'Basic subtraction'],
+        keyConcepts: ['Addition', 'Subtraction', 'Numbers'],
+        activities: ['Number line practice', 'Word problems'],
+        vocabulary: ['Add', 'Subtract', 'Sum', 'Difference'],
+        _id: 'math-1',
+        color: '#2196F3'
+      }
+    ]
   },
   Language: {
     id: 'language',
-    name: 'Language',
-    description: 'Develop your language skills through interactive exercises',
+    title: 'Language',
+    description: 'Develop language skills',
     icon: 'book-alphabet',
     color: '#9C27B0',
     lessons: [
       {
         id: 'lang-1',
-        title: 'Grammar Basics',
-        description: 'Learn essential grammar rules and sentence structure',
-        duration: '30 mins',
-        progress: 0,
+        title: 'Basic Grammar',
+        description: 'Learn essential grammar rules',
+        duration: '12 min',
+        progress: 50,
         difficulty: 'Beginner',
-        icon: 'format-text',
+        icon: 'book-alphabet',
         subject: 'Language',
-      },
-    ],
+        arEnabled: false,
+        learningObjectives: ['Parts of speech', 'Basic sentence structure'],
+        keyConcepts: ['Nouns', 'Verbs', 'Adjectives'],
+        activities: ['Word sorting', 'Sentence building'],
+        vocabulary: ['Noun', 'Verb', 'Adjective', 'Sentence'],
+        _id: 'lang-1',
+        color: '#9C27B0'
+      }
+    ]
   },
   'Social Studies': {
-    id: 'social-studies',
-    name: 'Social Studies',
-    description: 'Discover history, geography, and cultures of the world',
+    id: 'social',
+    title: 'Social Studies',
+    description: 'Understand society and culture',
     icon: 'earth',
     color: '#FF9800',
     lessons: [
       {
         id: 'social-1',
-        title: 'World History',
-        description: 'Explore major events and civilizations throughout history',
-        duration: '45 mins',
-        progress: 0,
-        difficulty: 'Intermediate',
-        icon: 'book-open-page-variant',
+        title: 'Community Helpers',
+        description: 'Learn about different community roles',
+        duration: '15 min',
+        progress: 30,
+        difficulty: 'Beginner',
+        icon: 'account-group',
         subject: 'Social Studies',
-      },
-    ],
+        arEnabled: true,
+        learningObjectives: ['Identify community helpers', 'Understand their roles'],
+        keyConcepts: ['Community', 'Helpers', 'Roles'],
+        activities: ['Role play', 'Helper matching'],
+        vocabulary: ['Community', 'Helper', 'Role', 'Service'],
+        _id: 'social-1',
+        color: '#FF9800'
+      }
+    ]
   },
   Music: {
     id: 'music',
-    name: 'Music',
-    description: 'Learn music theory and appreciation',
+    title: 'Music',
+    description: 'Explore musical concepts',
     icon: 'music',
     color: '#E91E63',
     lessons: [
       {
         id: 'music-1',
-        title: 'Music Theory',
-        description: 'Understanding notes, scales, and rhythm',
-        duration: '30 mins',
+        title: 'Rhythm Basics',
+        description: 'Learn about musical rhythm',
+        duration: '10 min',
         progress: 0,
         difficulty: 'Beginner',
-        icon: 'music-note',
+        icon: 'music',
         subject: 'Music',
-      },
-    ],
+        arEnabled: false,
+        learningObjectives: ['Basic rhythm patterns', 'Beat recognition'],
+        keyConcepts: ['Beat', 'Rhythm', 'Tempo'],
+        activities: ['Clapping exercises', 'Rhythm games'],
+        vocabulary: ['Beat', 'Rhythm', 'Tempo', 'Pattern'],
+        _id: 'music-1',
+        color: '#E91E63'
+      }
+    ]
   },
   Art: {
     id: 'art',
-    name: 'Art',
-    description: 'Explore various art forms and techniques',
+    title: 'Art',
+    description: 'Express creativity through art',
     icon: 'palette',
     color: '#3F51B5',
     lessons: [
       {
         id: 'art-1',
         title: 'Color Theory',
-        description: 'Learn about color wheels, schemes, and harmonies',
-        duration: '35 mins',
+        description: 'Learn about colors and their combinations',
+        duration: '15 min',
         progress: 0,
         difficulty: 'Beginner',
         icon: 'palette',
         subject: 'Art',
-      },
-    ],
-  },
+        arEnabled: false,
+        learningObjectives: ['Primary colors', 'Color mixing'],
+        keyConcepts: ['Primary Colors', 'Secondary Colors', 'Color Wheel'],
+        activities: ['Color mixing', 'Rainbow painting'],
+        vocabulary: ['Primary', 'Secondary', 'Mix', 'Color'],
+        _id: 'art-1',
+        color: '#3F51B5'
+      }
+    ]
+  }
 };
 
 export type Subject = SubjectType | 'All';
