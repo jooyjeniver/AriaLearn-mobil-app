@@ -24,13 +24,16 @@ export interface Lesson {
 
 export interface Module {
   _id: string;
-  name: string;
   title: string;
   description: string;
+  content: string;
+  order: number;
   icon: string;
   color: string;
-  order: number;
-  modules: any[];
+  lessons: Lesson[];
+  arModels: any[];
+  resources: any[];
+  quizzes: any[];
   createdAt: string;
   __v: number;
 }

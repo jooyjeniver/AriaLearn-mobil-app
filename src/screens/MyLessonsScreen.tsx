@@ -54,7 +54,7 @@ const ModuleCard: React.FC<ModuleCardProps> = ({ module, onPress }) => {
   };
 
   const handleModulePress = () => {
-    showToast(`Opening ${module.title || module.name} module`, 'info');
+    showToast(`Opening ${module.title} module`, 'info');
     onPress();
   };
 
@@ -69,10 +69,10 @@ const ModuleCard: React.FC<ModuleCardProps> = ({ module, onPress }) => {
           <MaterialCommunityIcons name={module.icon} size={32} color={module.color} />
         </View>
         <View style={styles.moduleContent}>
-          <Text style={styles.moduleTitle}>{module.name}</Text>
+          <Text style={styles.moduleTitle}>{module.title}</Text>
           <Text style={styles.moduleDescription}>{module.description}</Text>
           <View style={styles.moduleFooter}>
-            <Text style={styles.moduleOrder}>Module {module.order}</Text>
+            <Text style={styles.moduleOrder}>Module {module._id}</Text>
             <MaterialCommunityIcons name="chevron-right" size={24} color={module.color} />
           </View>
         </View>
@@ -152,7 +152,7 @@ const MyLessonsScreen: React.FC = () => {
     
     // Navigate to ScienceScreen regardless of the module title
     navigation.navigate('Science');
-    showToast(`Opening ${module.title || module.name} module`, 'info');
+    showToast(`Opening ${module.title} module`, 'info');
   }, [navigation, showToast]);
 
   const handleFilterChange = (filter: string) => {
@@ -162,7 +162,19 @@ const MyLessonsScreen: React.FC = () => {
 
   const filteredModules = selectedFilter === 'All' 
     ? modules 
-    : modules.filter(module => (module.title || module.name).toLowerCase().includes(selectedFilter.toLowerCase()));
+    : modules.filter(module => {
+        // Check if module title matches
+        const moduleMatches = module.title.toLowerCase().includes(selectedFilter.toLowerCase());
+        
+        // Check if any lesson in the module matches
+        const lessonsMatch = module.lessons?.some(lesson => 
+          lesson.title.toLowerCase().includes(selectedFilter.toLowerCase())
+        );
+
+        return moduleMatches || lessonsMatch;
+      });
+
+  console.log('Filtered Modules:', JSON.stringify(filteredModules, null, 2));
 
   if (loading) {
     return (
@@ -227,13 +239,21 @@ const MyLessonsScreen: React.FC = () => {
         <View style={styles.modulesSection}>
           <Text style={styles.sectionTitle}>Available Modules</Text>
           {filteredModules.length > 0 ? (
-            filteredModules.map(module => (
-              <ModuleCard
-                key={module._id}
-                module={module}
-                onPress={() => handleModulePress(module)}
-              />
-            ))
+            filteredModules.map(module => 
+              module.lessons.map(lesson => (
+                <ModuleCard
+                  key={lesson._id}
+                  module={{
+                    ...module,
+                    title: lesson.title,
+                    description: lesson.description,
+                    icon: lesson.icon || module.icon,
+                    color: module.color
+                  }}
+                  onPress={() => handleModulePress(module)}
+                />
+              ))
+            ).flat()
           ) : (
             <View style={styles.emptyStateContainer}>
               <MaterialCommunityIcons name="book-open-page-variant" size={48} color="#9E9E9E" />
@@ -442,6 +462,22 @@ const styles = StyleSheet.create({
     color: '#9E9E9E',
     marginTop: 16,
     textAlign: 'center',
+  },
+  lessonsContainer: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  lessonItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  lessonTitle: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 8,
   },
 });
 
