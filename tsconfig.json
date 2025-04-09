@@ -1,0 +1,7 @@
+{
+  "compilerOptions": {
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true ,// Also helps with default imports
+    "jsx": "react-native"
+  }
+}
