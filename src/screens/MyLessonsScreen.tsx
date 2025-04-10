@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,89 +9,36 @@ import {
   Animated,
   Platform,
   useWindowDimensions,
+  ActivityIndicator,
+  Image,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import type { CompositeNavigationProp } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import type { CompositeNavigationProp, RouteProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import type { Lesson, Subject, SubjectType } from '../types/lessons';
-import type { RootTabParamList, SubjectStackParamList, SubjectScreenNames } from '../types/navigation';
+import type { Lesson, Subject, SubjectType, Difficulty } from '../types/lessons';
+import type { RootTabParamList, SubjectStackParamList } from '../types/navigation';
+import { useToast } from '../context/ToastContext';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { fetchModules, selectModules, selectModulesLoading, selectModulesError, Module } from '../store/slices/modulesSlice';
 
 type NavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<RootTabParamList>,
   NativeStackNavigationProp<SubjectStackParamList>
 >;
 
-const SUBJECTS: { name: string; icon: string; color: string }[] = [
-  { name: 'Science', icon: 'flask', color: '#4CAF50' },
-  { name: 'Mathematics', icon: 'calculator', color: '#2196F3' },
-  { name: 'Language', icon: 'book-alphabet', color: '#9C27B0' },
-  { name: 'Social Studies', icon: 'earth', color: '#FF9800' },
-  { name: 'Music', icon: 'music', color: '#E91E63' },
-  { name: 'Art', icon: 'palette', color: '#3F51B5' },
-];
+type RouteProps = RouteProp<RootTabParamList, 'My Lessons'>;
 
-const LESSONS: Lesson[] = [
-  {
-    id: '1',
-    title: 'Animal Kingdom',
-    description: 'Learn about different animal species and their habitats',
-    duration: '15 min',
-    progress: 75,
-    icon: 'paw',
-    subject: 'Science',
-    difficulty: 'Beginner',
-  },
-  {
-    id: '2',
-    title: 'Addition & Subtraction',
-    description: 'Practice basic math with fun examples',
-    duration: '10 min',
-    progress: 100,
-    isComplete: true,
-    icon: 'calculator',
-    subject: 'Mathematics',
-    difficulty: 'Beginner',
-  },
-  {
-    id: '3',
-    title: 'Solar System',
-    description: 'Explore planets and space objects',
-    duration: '20 min',
-    progress: 30,
-    icon: 'planet',
-    subject: 'Science',
-    difficulty: 'Intermediate',
-  },
-  {
-    id: '4',
-    title: 'Basic Grammar',
-    description: 'Learn essential grammar rules',
-    duration: '12 min',
-    progress: 50,
-    icon: 'book-alphabet',
-    subject: 'Language',
-    difficulty: 'Beginner',
-  },
-];
-
-interface LessonCardProps extends Lesson {
+interface ModuleCardProps {
+  module: Module;
   onPress: () => void;
 }
 
-const LessonCard: React.FC<LessonCardProps> = ({
-  title,
-  description,
-  duration,
-  progress,
-  isComplete,
-  icon,
-  onPress,
-  subject,
-}) => {
+const ModuleCard: React.FC<ModuleCardProps> = ({ module, onPress }) => {
   const scaleAnim = new Animated.Value(1);
-  
+  const { showToast } = useToast();
+
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
       toValue: 0.95,
@@ -106,42 +53,27 @@ const LessonCard: React.FC<LessonCardProps> = ({
     }).start();
   };
 
-  const subjectColor = SUBJECTS.find(s => s.name === subject)?.color || '#6A1B9A';
+  const handleModulePress = () => {
+    showToast(`Opening ${module.title} module`, 'info');
+    onPress();
+  };
 
   return (
     <Animated.View style={[{ transform: [{ scale: scaleAnim }] }]}>
       <TouchableOpacity
-        style={styles.lessonCard}
-        onPress={onPress}
+        style={[styles.moduleCard, { borderLeftColor: module.color, borderLeftWidth: 4 }]}
+        onPress={handleModulePress}
         onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={0.7}>
-        <View style={styles.lessonContent}>
-          <View style={[styles.iconContainer, { backgroundColor: `${subjectColor}20` }]}>
-            <MaterialCommunityIcons name={icon} size={40} color={subjectColor} />
-          </View>
-          <View style={styles.lessonInfo}>
-            <Text style={styles.lessonTitle}>{title}</Text>
-            <Text style={styles.lessonDescription}>{description}</Text>
-            <View style={styles.lessonMeta}>
-              <MaterialCommunityIcons name="clock-outline" size={12} color="#666" />
-              <Text style={styles.duration}>{duration}</Text>
-              <View style={styles.progressContainer}>
-                <Animated.View 
-                  style={[
-                    styles.progressBar, 
-                    { 
-                      width: `${progress}%`,
-                      backgroundColor: subjectColor,
-                    }
-                  ]} 
-                />
-              </View>
-              <Text style={styles.progressText}>{progress}% complete</Text>
-              {isComplete && (
-                <MaterialCommunityIcons name="check-circle" size={20} color="#4CAF50" />
-              )}
-            </View>
+        onPressOut={handlePressOut}>
+        <View style={[styles.moduleIconContainer, { backgroundColor: `${module.color}20` }]}>
+          <MaterialCommunityIcons name={module.icon} size={32} color={module.color} />
+        </View>
+        <View style={styles.moduleContent}>
+          <Text style={styles.moduleTitle}>{module.title}</Text>
+          <Text style={styles.moduleDescription}>{module.description}</Text>
+          <View style={styles.moduleFooter}>
+            <Text style={styles.moduleOrder}>Module {module._id}</Text>
+            <MaterialCommunityIcons name="chevron-right" size={24} color={module.color} />
           </View>
         </View>
       </TouchableOpacity>
@@ -149,61 +81,115 @@ const LessonCard: React.FC<LessonCardProps> = ({
   );
 };
 
-interface SubjectButtonProps {
-  subject: {
-    name: string;
-    icon: string;
-    color: string;
-  };
+interface FilterButtonProps {
+  title: string;
   isSelected: boolean;
   onPress: () => void;
+  color: string;
 }
 
-const SubjectButton: React.FC<SubjectButtonProps> = ({ subject, isSelected, onPress }) => (
+const FilterButton: React.FC<FilterButtonProps> = ({ title, isSelected, onPress, color }) => (
   <TouchableOpacity
     style={[
-      styles.subjectButton,
-      isSelected && { backgroundColor: `${subject.color}20` },
+      styles.filterButton,
+      isSelected && { backgroundColor: `${color}20`, borderColor: color },
     ]}
     onPress={onPress}>
-    <MaterialCommunityIcons
-      name={subject.icon}
-      size={24}
-      color={isSelected ? subject.color : '#666'}
-    />
     <Text
       style={[
-        styles.subjectText,
-        isSelected && { color: subject.color, fontWeight: 'bold' },
+        styles.filterText,
+        isSelected && { color: color, fontWeight: 'bold' },
       ]}>
-      {subject.name}
+      {title}
     </Text>
   </TouchableOpacity>
 );
 
 const MyLessonsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<RouteProps>();
   const { width } = useWindowDimensions();
-  const [selectedSubject, setSelectedSubject] = useState<string>('All');
+  const [selectedModule, setSelectedModule] = useState<string | null>(null);
+  const [selectedFilter, setSelectedFilter] = useState<string>('All');
+  const { showToast } = useToast();
+  const dispatch = useAppDispatch();
+  const modules = useAppSelector(selectModules);
+  const loading = useAppSelector(selectModulesLoading);
+  const error = useAppSelector(selectModulesError);
 
-  const filteredLessons = LESSONS.filter(
-    lesson => selectedSubject === 'All' || lesson.subject === selectedSubject
-  );
+  // Extract unique titles from modules for filtering
+  const moduleTitles = React.useMemo(() => {
+    const titles = new Set<string>();
+    titles.add('All');
+    modules.forEach(module => {
+      if (module.title) {
+        titles.add(module.title);
+      }
+    });
+    return Array.from(titles);
+  }, [modules]);
 
-  const handleLessonPress = useCallback((lesson: Lesson) => {
-    if (lesson.subject === 'Science' && lesson.title === 'Solar System') {
-      navigation.navigate('AR Learn');
-    } else {
-      console.log("test")
+  useEffect(() => {
+    dispatch(fetchModules());
+  }, [dispatch]);
+
+  useEffect(() => {
+    if (error) {
+      showToast(error, 'error');
     }
-  }, [navigation]);
+  }, [error, showToast]);
+
+  // Set initial filter from navigation params
+  useEffect(() => {
+    if (route.params?.selectedFilter) {
+      setSelectedFilter(route.params.selectedFilter);
+      showToast(`Filtered by ${route.params.selectedFilter}`, 'info');
+    }
+  }, [route.params?.selectedFilter]);
+
+  const handleModulePress = useCallback((module: Module) => {
+    setSelectedModule(module._id);
+    
+    // Navigate to ScienceScreen regardless of the module title
+    navigation.navigate('Science');
+    showToast(`Opening ${module.title} module`, 'info');
+  }, [navigation, showToast]);
+
+  const handleFilterChange = (filter: string) => {
+    setSelectedFilter(filter);
+    showToast(`Filtering by ${filter}`, 'info');
+  };
+
+  const filteredModules = selectedFilter === 'All' 
+    ? modules 
+    : modules.filter(module => {
+        // Check if module title matches
+        const moduleMatches = module.title.toLowerCase().includes(selectedFilter.toLowerCase());
+        
+        // Check if any lesson in the module matches
+        const lessonsMatch = module.lessons?.some(lesson => 
+          lesson.title.toLowerCase().includes(selectedFilter.toLowerCase())
+        );
+
+        return moduleMatches || lessonsMatch;
+      });
+
+  console.log('Filtered Modules:', JSON.stringify(filteredModules, null, 2));
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#6A1B9A" />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView>
         <View style={styles.header}>
           <Text style={styles.title}>My Learning Path</Text>
-          <MaterialCommunityIcons name="om" size={24} color="#6A1B9A" />
+          <MaterialCommunityIcons name="book-open-variant" size={24} color="#6A1B9A" />
         </View>
 
         <View style={styles.recommendationSection}>
@@ -211,7 +197,10 @@ const MyLessonsScreen: React.FC = () => {
           <Text style={styles.subtitle}>Based on your interests</Text>
           <TouchableOpacity 
             style={styles.recommendationCard}
-            onPress={() => navigation.navigate('AR Learn')}>
+            onPress={() => {
+              navigation.navigate('AR Learn');
+              showToast('Starting AR Space Adventure! 🚀', 'info');
+            }}>
             <MaterialCommunityIcons name="rocket" size={32} color="#6A1B9A" />
             <View style={styles.recommendationContent}>
               <Text style={styles.recommendationTitle}>Explore Space Adventure</Text>
@@ -223,34 +212,54 @@ const MyLessonsScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.subjectsContainer}>
-          <SubjectButton
-            subject={{ name: 'All', icon: 'view-grid', color: '#6A1B9A' }}
-            isSelected={selectedSubject === 'All'}
-            onPress={() => setSelectedSubject('All')}
-          />
-          {SUBJECTS.map(subject => (
-            <SubjectButton
-              key={subject.name}
-              subject={subject}
-              isSelected={selectedSubject === subject.name}
-              onPress={() => setSelectedSubject(subject.name)}
-            />
-          ))}
-        </ScrollView>
+        <View style={styles.filterSection}>
+          <Text style={styles.sectionTitle}>Filter Modules</Text>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterContainer}>
+            {moduleTitles.map((title, index) => (
+              <FilterButton 
+                key={index}
+                title={title} 
+                isSelected={selectedFilter === title} 
+                onPress={() => handleFilterChange(title)}
+                color={title === 'All' ? '#6A1B9A' : 
+                       title === 'Science' ? '#4CAF50' : 
+                       title === 'Mathematics' ? '#2196F3' : 
+                       title === 'Language' ? '#9C27B0' : 
+                       title === 'Social Studies' ? '#FF9800' : 
+                       title === 'Music' ? '#E91E63' : 
+                       title === 'Art' ? '#3F51B5' : '#6A1B9A'}
+              />
+            ))}
+          </ScrollView>
+        </View>
 
-        <View style={styles.lessonsSection}>
-          <Text style={styles.sectionTitle}>Continue Learning</Text>
-          {filteredLessons.map(lesson => (
-            <LessonCard
-              key={lesson.id}
-              {...lesson}
-              onPress={() => handleLessonPress(lesson)}
-            />
-          ))}
+        <View style={styles.modulesSection}>
+          <Text style={styles.sectionTitle}>Available Modules</Text>
+          {filteredModules.length > 0 ? (
+            filteredModules.map(module => 
+              module.lessons.map(lesson => (
+                <ModuleCard
+                  key={lesson._id}
+                  module={{
+                    ...module,
+                    title: lesson.title,
+                    description: lesson.description,
+                    icon: lesson.icon || module.icon,
+                    color: module.color
+                  }}
+                  onPress={() => handleModulePress(module)}
+                />
+              ))
+            ).flat()
+          ) : (
+            <View style={styles.emptyStateContainer}>
+              <MaterialCommunityIcons name="book-open-page-variant" size={48} color="#9E9E9E" />
+              <Text style={styles.emptyStateText}>No modules found for this filter</Text>
+            </View>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -261,6 +270,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -325,44 +339,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
   },
-  subjectsContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    gap: 8,
-  },
-  subjectButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#FFF',
-    marginRight: 8,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 1,
-      },
-    }),
-  },
-  subjectText: {
-    marginLeft: 8,
-    fontSize: 14,
-    color: '#666',
-  },
-  lessonsSection: {
+  filterSection: {
     padding: 16,
-  },
-  lessonCard: {
     backgroundColor: '#FFF',
-    borderRadius: 12,
+    marginHorizontal: 16,
     marginBottom: 16,
-    padding: 16,
+    borderRadius: 12,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -375,54 +357,127 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  lessonContent: {
-    flexDirection: 'row',
-    gap: 16,
+  filterContainer: {
+    paddingVertical: 8,
+    gap: 8,
   },
-  iconContainer: {
+  filterButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#FFF',
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
+  },
+  filterText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  modulesSection: {
+    padding: 16,
+  },
+  moduleCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    marginBottom: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  moduleIconContainer: {
     width: 64,
     height: 64,
     borderRadius: 32,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  lessonInfo: {
+  moduleContent: {
     flex: 1,
+    marginLeft: 16,
   },
-  lessonTitle: {
+  moduleTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 4,
   },
-  lessonDescription: {
+  moduleDescription: {
     fontSize: 14,
     color: '#666',
     marginBottom: 8,
   },
-  lessonMeta: {
+  moduleFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
   },
-  duration: {
+  moduleOrder: {
     fontSize: 12,
     color: '#666',
+    fontWeight: '500',
   },
-  progressContainer: {
-    flex: 1,
-    height: 4,
-    backgroundColor: '#E0E0E0',
-    borderRadius: 2,
-    overflow: 'hidden',
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
-  progressBar: {
-    height: '100%',
-    borderRadius: 2,
+  emptyStateText: {
+    fontSize: 16,
+    color: '#9E9E9E',
+    marginTop: 16,
+    textAlign: 'center',
   },
-  progressText: {
+  lessonsContainer: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  lessonItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  lessonTitle: {
     fontSize: 12,
     color: '#666',
+    marginLeft: 8,
   },
 });
 

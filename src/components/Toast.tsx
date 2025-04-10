@@ -1,60 +1,34 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Text, StyleSheet, View } from 'react-native';
-
-export type ToastType = 'success' | 'error' | 'info';
+import { Animated, StyleSheet, Text, View } from 'react-native';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 interface ToastProps {
   message: string;
-  type: ToastType;
+  type: 'success' | 'error' | 'info';
   onHide: () => void;
+  duration?: number;
 }
 
-const getToastStyle = (type: ToastType) => {
-  switch (type) {
-    case 'success':
-      return {
-        backgroundColor: '#4CAF50',
-        color: '#FFFFFF',
-        icon: '✓',
-      };
-    case 'error':
-      return {
-        backgroundColor: '#F44336',
-        color: '#FFFFFF',
-        icon: '✕',
-      };
-    case 'info':
-      return {
-        backgroundColor: '#2196F3',
-        color: '#FFFFFF',
-        icon: 'ℹ',
-      };
-  }
-};
-
-const Toast: React.FC<ToastProps> = ({ message, type, onHide }) => {
+const Toast: React.FC<ToastProps> = ({ message, type, onHide, duration = 3000 }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(50)).current;
-  const style = getToastStyle(type);
+  const translateY = useRef(new Animated.Value(-100)).current;
 
   useEffect(() => {
-    // Fade in and slide up
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 300,
         useNativeDriver: true,
       }),
-      Animated.timing(translateY, {
+      Animated.spring(translateY, {
         toValue: 0,
-        duration: 300,
+        tension: 50,
+        friction: 7,
         useNativeDriver: true,
       }),
     ]).start();
 
-    // Auto hide after 3 seconds
     const timer = setTimeout(() => {
-      // Fade out and slide down
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 0,
@@ -62,60 +36,82 @@ const Toast: React.FC<ToastProps> = ({ message, type, onHide }) => {
           useNativeDriver: true,
         }),
         Animated.timing(translateY, {
-          toValue: 50,
+          toValue: -100,
           duration: 300,
           useNativeDriver: true,
         }),
-      ]).start(() => {
-        onHide();
-      });
-    }, 3000);
+      ]).start(() => onHide());
+    }, duration);
 
     return () => clearTimeout(timer);
   }, []);
 
+  const getIconName = () => {
+    switch (type) {
+      case 'success':
+        return 'check-circle';
+      case 'error':
+        return 'alert-circle';
+      case 'info':
+        return 'information';
+      default:
+        return 'information';
+    }
+  };
+
+  const getBackgroundColor = () => {
+    switch (type) {
+      case 'success':
+        return '#4CAF50';
+      case 'error':
+        return '#F44336';
+      case 'info':
+        return '#2196F3';
+      default:
+        return '#2196F3';
+    }
+  };
+
   return (
     <Animated.View
       style={[
-        styles.toastContainer,
+        styles.container,
         {
-          backgroundColor: style.backgroundColor,
           opacity: fadeAnim,
           transform: [{ translateY }],
+          backgroundColor: getBackgroundColor(),
         },
-      ]}
-    >
-      <Text style={styles.toastIcon}>{style.icon}</Text>
-      <Text style={[styles.toastText, { color: style.color }]}>{message}</Text>
+      ]}>
+      <MaterialCommunityIcons name={getIconName()} size={24} color="#FFF" />
+      <Text style={styles.message}>{message}</Text>
     </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
-  toastContainer: {
+  container: {
     position: 'absolute',
-    bottom: 50,
+    top: 50,
     left: 20,
     right: 20,
-    padding: 15,
+    padding: 16,
     borderRadius: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
   },
-  toastIcon: {
-    fontSize: 20,
-    marginRight: 10,
-    color: '#FFFFFF',
-  },
-  toastText: {
+  message: {
+    color: '#FFF',
+    marginLeft: 12,
     fontSize: 16,
-    fontWeight: '500',
+    flex: 1,
   },
 });
 

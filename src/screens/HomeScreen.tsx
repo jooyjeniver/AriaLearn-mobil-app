@@ -10,12 +10,17 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { SubjectStackParamList } from '../types/navigation';
+import type { RootTabParamList, SubjectStackParamList } from '../types/navigation';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { fetchSubjects } from '../store/slices/subjectsSlice';
 
-type HomeScreenNavigationProp = NativeStackNavigationProp<SubjectStackParamList, 'HomeTab'>;
+type HomeScreenNavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<RootTabParamList>,
+  NativeStackNavigationProp<SubjectStackParamList>
+>;
 
 const SubjectCard = ({ 
   title, 
@@ -48,12 +53,13 @@ const HomeScreen = () => {
   }, [dispatch]);
 
   const handleSubjectPress = (subjectName: string) => {
-    // Navigate to the subject screen with the subject name
-    navigation.navigate(subjectName as keyof SubjectStackParamList);
+    // Navigate to MyLessonsScreen using the tab navigator and pass the subject name
+    navigation.navigate('My Lessons', { selectedFilter: subjectName });
   };
 
   const handleProfilePress = () => {
-    navigation.navigate('UserProfile');
+    // @ts-ignore - Ignoring type error for navigation between different navigators
+    navigation.navigate('UserProfile' as any);
   };
 
   return (

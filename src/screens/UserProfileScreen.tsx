@@ -16,92 +16,89 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { logout, updateUserDetails, getCurrentUser } from '../store/slices/authSlice';
 import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { SubjectStackParamList } from '../types/navigation';
-import { useToast } from '../components/ToastManager';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { MainStackParamList } from '../types/navigation';
+import { useToast } from '../context/ToastContext';
 
-type UserProfileScreenNavigationProp = NativeStackNavigationProp<SubjectStackParamList, 'UserProfile'>;
+type UserProfileScreenNavigationProp = NativeStackNavigationProp<MainStackParamList, 'Profile'>;
 
-const UserProfileScreen = () => {
+interface Props {
+  navigation: UserProfileScreenNavigationProp;
+}
+
+const UserProfileScreen: React.FC<Props> = ({ navigation }) => {
   const dispatch = useAppDispatch();
   const { user, loading } = useAppSelector((state) => state.auth);
-  const navigation = useNavigation<UserProfileScreenNavigationProp>();
-  const { showToast } = useToast();
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedName, setEditedName] = useState('');
+  const [notifications, setNotifications] = useState(true);
+  const [darkMode, setDarkMode] = useState(false);
+  const { showToast } = useToast();
 
-  // Update local state when user data changes
   useEffect(() => {
-    if (user) {
-      setName(user.name || '');
-      setEmail(user.email || '');
+    if (user?.name) {
+      setEditedName(user.name);
     }
-  }, [user]);
+  }, [user?.name]);
 
-  // Load user data on component mount
-  useEffect(() => {
-    loadUserData();
-  }, []);
-
-  const loadUserData = async () => {
-    try {
-      await dispatch(getCurrentUser()).unwrap();
-    } catch (error) {
-      showToast('Failed to load user data', 'error');
-    }
-  };
-
-  const onRefresh = async () => {
+  const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await loadUserData();
+      await dispatch(getCurrentUser());
+      showToast('Profile refreshed! 🔄', 'success');
+    } catch (error) {
+      showToast('Failed to refresh profile', 'error');
     } finally {
       setRefreshing(false);
     }
   };
 
-  const handleLogout = async () => {
+  const handleUpdateProfile = async (name: string) => {
+    try {
+      await dispatch(updateUserDetails({ name, email: user?.email || '' })).unwrap();
+      showToast('Profile updated successfully', 'success');
+    } catch (error) {
+      showToast('Failed to update profile', 'error');
+    }
+  };
+
+  const handleLogout = () => {
     Alert.alert(
       'Logout',
       'Are you sure you want to logout?',
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Logout',
           style: 'destructive',
           onPress: async () => {
             try {
-              await dispatch(logout()).unwrap();
-              showToast('Logged out successfully', 'success');
+              await dispatch(logout());
+              showToast('Logged out successfully! 👋', 'success');
             } catch (error) {
-              showToast('Failed to logout. Please try again.', 'error');
+              showToast('Failed to logout', 'error');
             }
           },
         },
-      ]
+      ],
     );
   };
 
-  const handleUpdateProfile = async () => {
-    if (!name || !email) {
-      showToast('Please fill in all fields', 'error');
-      return;
-    }
+  const handleNotificationToggle = (value: boolean) => {
+    setNotifications(value);
+    showToast(
+      value ? 'Notifications enabled 🔔' : 'Notifications disabled 🔕',
+      'info'
+    );
+  };
 
-    try {
-      await dispatch(updateUserDetails({ name, email })).unwrap();
-      showToast('Profile updated successfully', 'success');
-      setIsEditing(false);
-    } catch (error: any) {
-      showToast(error.message || 'Failed to update profile', 'error');
-    }
+  const handleDarkModeToggle = (value: boolean) => {
+    setDarkMode(value);
+    showToast(
+      value ? 'Dark mode enabled 🌙' : 'Light mode enabled ☀️',
+      'info'
+    );
   };
 
   if (loading && !user) {
@@ -112,115 +109,60 @@ const UserProfileScreen = () => {
     );
   }
 
-  if (!user) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.errorText}>No user data available</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={loadUserData}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
   return (
-    <ScrollView 
+    <ScrollView
       style={styles.container}
       refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          colors={['#6A1B9A']}
-          tintColor="#6A1B9A"
-        />
-      }
-    >
+        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+      }>
       {/* Profile Header */}
       <View style={styles.header}>
-        <View style={styles.avatarContainer}>
+        <View style={styles.profileImageContainer}>
           <Image
-            source={{ uri: user.avatar || 'https://via.placeholder.com/100' }}
-            style={styles.avatar}
+            source={{ uri: user?.avatar || 'https://via.placeholder.com/150' }}
+            style={styles.profileImage}
           />
-          <TouchableOpacity style={styles.editAvatarButton}>
+          <TouchableOpacity
+            style={styles.editImageButton}
+            onPress={() => showToast('Profile picture update coming soon! 📸', 'info')}>
             <MaterialCommunityIcons name="camera" size={20} color="#fff" />
           </TouchableOpacity>
         </View>
-        
         {isEditing ? (
-          <View style={styles.editForm}>
+          <View style={styles.editNameContainer}>
             <TextInput
-              style={styles.input}
-              value={name}
-              onChangeText={setName}
-              placeholder="Your name"
-              placeholderTextColor="#ccc"
-            />
-            <TextInput
-              style={styles.input}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Your email"
-              placeholderTextColor="#ccc"
-              keyboardType="email-address"
-              autoCapitalize="none"
+              style={styles.nameInput}
+              value={editedName}
+              onChangeText={setEditedName}
+              placeholder="Enter your name"
             />
             <View style={styles.editButtons}>
-              <TouchableOpacity 
-                style={styles.cancelButton} 
+              <TouchableOpacity
+                style={[styles.editButton, styles.cancelButton]}
                 onPress={() => {
                   setIsEditing(false);
-                  setName(user.name || '');
-                  setEmail(user.email || '');
-                }}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                  setEditedName(user?.name || '');
+                }}>
+                <Text style={styles.editButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.saveButton} 
-                onPress={handleUpdateProfile}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={styles.saveButtonText}>Save</Text>
-                )}
+              <TouchableOpacity
+                style={[styles.editButton, styles.saveButton]}
+                onPress={() => handleUpdateProfile(editedName)}>
+                <Text style={styles.editButtonText}>Save</Text>
               </TouchableOpacity>
             </View>
           </View>
         ) : (
-          <View style={styles.userInfo}>
-            <Text style={styles.name}>{user.name || 'No name set'}</Text>
-            <Text style={styles.email}>{user.email || 'No email set'}</Text>
-            <TouchableOpacity 
-              style={styles.editProfileButton}
-              onPress={() => setIsEditing(true)}
-            >
-              <MaterialCommunityIcons name="pencil" size={16} color="#fff" />
-              <Text style={styles.editProfileText}>Edit Profile</Text>
+          <View style={styles.nameContainer}>
+            <Text style={styles.name}>{user?.name || 'Student'}</Text>
+            <TouchableOpacity
+              style={styles.editNameButton}
+              onPress={() => setIsEditing(true)}>
+              <MaterialCommunityIcons name="pencil" size={20} color="#6A1B9A" />
             </TouchableOpacity>
           </View>
         )}
-      </View>
-
-      {/* User Details Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Account Information</Text>
-        <View style={styles.detailItem}>
-          <MaterialCommunityIcons name="account" size={24} color="#666" />
-          <View style={styles.detailContent}>
-            <Text style={styles.detailLabel}>Name</Text>
-            <Text style={styles.detailValue}>{user.name || 'Not set'}</Text>
-          </View>
-        </View>
-        <View style={styles.detailItem}>
-          <MaterialCommunityIcons name="email" size={24} color="#666" />
-          <View style={styles.detailContent}>
-            <Text style={styles.detailLabel}>Email</Text>
-            <Text style={styles.detailValue}>{user.email || 'Not set'}</Text>
-          </View>
-        </View>
+        <Text style={styles.email}>{user?.email || 'Not set'}</Text>
       </View>
 
       {/* Progress Section */}
@@ -228,15 +170,15 @@ const UserProfileScreen = () => {
         <Text style={styles.sectionTitle}>Your Progress</Text>
         <View style={styles.progressGrid}>
           <View style={styles.progressItem}>
-            <Text style={styles.progressNumber}>{user.progress?.completedLessons || 0}</Text>
+            <Text style={styles.progressNumber}>{user?.progress?.completedLessons || 0}</Text>
             <Text style={styles.progressLabel}>Lessons Completed</Text>
           </View>
           <View style={styles.progressItem}>
-            <Text style={styles.progressNumber}>{user.progress?.totalHours || 0}h</Text>
+            <Text style={styles.progressNumber}>{user?.progress?.totalHours || 0}h</Text>
             <Text style={styles.progressLabel}>Learning Time</Text>
           </View>
           <View style={styles.progressItem}>
-            <Text style={styles.progressNumber}>{user.progress?.achievements || 0}</Text>
+            <Text style={styles.progressNumber}>{user?.progress?.achievements || 0}</Text>
             <Text style={styles.progressLabel}>Achievements</Text>
           </View>
         </View>
@@ -245,57 +187,31 @@ const UserProfileScreen = () => {
       {/* Settings Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Settings</Text>
-        
-        {/* Notifications */}
         <View style={styles.settingItem}>
-          <View style={styles.settingLeft}>
-            <MaterialCommunityIcons name="bell-outline" size={24} color="#666" />
-            <Text style={styles.settingText}>Notifications</Text>
-          </View>
+          <MaterialCommunityIcons name="bell-outline" size={24} color="#666" />
+          <Text style={styles.settingLabel}>Notifications</Text>
           <Switch
-            value={notificationsEnabled}
-            onValueChange={setNotificationsEnabled}
+            value={notifications}
+            onValueChange={handleNotificationToggle}
             trackColor={{ false: '#767577', true: '#6A1B9A' }}
-            thumbColor={notificationsEnabled ? '#fff' : '#f4f3f4'}
+            thumbColor={notifications ? '#fff' : '#f4f3f4'}
           />
         </View>
-
-        {/* Dark Mode */}
         <View style={styles.settingItem}>
-          <View style={styles.settingLeft}>
-            <MaterialCommunityIcons name="theme-light-dark" size={24} color="#666" />
-            <Text style={styles.settingText}>Dark Mode</Text>
-          </View>
+          <MaterialCommunityIcons name="theme-light-dark" size={24} color="#666" />
+          <Text style={styles.settingLabel}>Dark Mode</Text>
           <Switch
             value={darkMode}
-            onValueChange={setDarkMode}
+            onValueChange={handleDarkModeToggle}
             trackColor={{ false: '#767577', true: '#6A1B9A' }}
             thumbColor={darkMode ? '#fff' : '#f4f3f4'}
           />
         </View>
-
-        {/* Language */}
-        <TouchableOpacity style={styles.settingItem}>
-          <View style={styles.settingLeft}>
-            <MaterialCommunityIcons name="translate" size={24} color="#666" />
-            <Text style={styles.settingText}>Language</Text>
-          </View>
-          <MaterialCommunityIcons name="chevron-right" size={24} color="#666" />
-        </TouchableOpacity>
-
-        {/* Privacy */}
-        <TouchableOpacity style={styles.settingItem}>
-          <View style={styles.settingLeft}>
-            <MaterialCommunityIcons name="shield-lock-outline" size={24} color="#666" />
-            <Text style={styles.settingText}>Privacy Settings</Text>
-          </View>
-          <MaterialCommunityIcons name="chevron-right" size={24} color="#666" />
-        </TouchableOpacity>
       </View>
 
       {/* Logout Button */}
       <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-        <MaterialCommunityIcons name="logout" size={24} color="#ff3b30" />
+        <MaterialCommunityIcons name="logout" size={24} color="#F44336" />
         <Text style={styles.logoutText}>Logout</Text>
       </TouchableOpacity>
     </ScrollView>
@@ -311,120 +227,86 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: '#9C27B0',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '500',
   },
   header: {
     alignItems: 'center',
     padding: 20,
-    backgroundColor: '#6A1B9A',
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
   },
-  avatarContainer: {
+  profileImageContainer: {
     position: 'relative',
     marginBottom: 15,
   },
-  avatar: {
+  profileImage: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    borderWidth: 3,
-    borderColor: '#fff',
   },
-  editAvatarButton: {
+  editImageButton: {
     position: 'absolute',
-    right: 0,
     bottom: 0,
+    right: 0,
     backgroundColor: '#6A1B9A',
-    borderRadius: 15,
-    padding: 8,
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  userInfo: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
     alignItems: 'center',
+  },
+  nameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5,
   },
   name: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 5,
+    color: '#333',
+    marginRight: 10,
   },
-  email: {
-    fontSize: 16,
-    color: '#fff',
-    opacity: 0.8,
-    marginBottom: 10,
+  editNameButton: {
+    padding: 5,
   },
-  editProfileButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  editProfileText: {
-    color: '#fff',
-    marginLeft: 5,
-    fontSize: 14,
-  },
-  editForm: {
+  editNameContainer: {
     width: '100%',
-    marginTop: 10,
+    alignItems: 'center',
   },
-  input: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  nameInput: {
+    width: '80%',
+    height: 40,
+    borderWidth: 1,
+    borderColor: '#ddd',
     borderRadius: 8,
-    padding: 12,
-    color: '#fff',
+    paddingHorizontal: 10,
     marginBottom: 10,
-    fontSize: 16,
   },
   editButtons: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 10,
+    justifyContent: 'center',
+    width: '80%',
+  },
+  editButton: {
+    padding: 8,
+    borderRadius: 5,
+    marginHorizontal: 5,
+    minWidth: 80,
+    alignItems: 'center',
   },
   cancelButton: {
-    flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    padding: 12,
-    borderRadius: 8,
-    marginRight: 5,
-    alignItems: 'center',
+    backgroundColor: '#f44336',
   },
   saveButton: {
-    flex: 1,
-    backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 8,
-    marginLeft: 5,
-    alignItems: 'center',
+    backgroundColor: '#4CAF50',
   },
-  cancelButtonText: {
+  editButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
-  saveButtonText: {
-    color: '#6A1B9A',
+  email: {
     fontSize: 16,
-    fontWeight: '600',
+    color: '#666',
   },
   section: {
     padding: 20,
@@ -436,24 +318,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 15,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  detailContent: {
-    marginLeft: 15,
-    flex: 1,
-  },
-  detailLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 2,
-  },
-  detailValue: {
-    fontSize: 16,
-    color: '#333',
   },
   progressGrid: {
     flexDirection: 'row',
@@ -467,26 +331,21 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#6A1B9A',
-    marginBottom: 5,
   },
   progressLabel: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#666',
     textAlign: 'center',
   },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 15,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
-  settingLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  settingText: {
+  settingLabel: {
+    flex: 1,
     fontSize: 16,
     color: '#333',
     marginLeft: 15,
@@ -495,15 +354,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
-    marginTop: 20,
-    marginBottom: 40,
+    padding: 15,
+    margin: 20,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#F44336',
   },
   logoutText: {
+    color: '#F44336',
     fontSize: 16,
-    color: '#ff3b30',
+    fontWeight: 'bold',
     marginLeft: 10,
-    fontWeight: '600',
   },
 });
 

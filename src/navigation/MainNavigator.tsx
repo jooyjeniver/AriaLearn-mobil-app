@@ -1,5 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import HomeScreen from '../screens/HomeScreen';
@@ -7,8 +8,11 @@ import ARLearnScreen from '../screens/ARLearnScreen';
 import MyLessonsScreen from '../screens/MyLessonsScreen';
 import GamesScreen from '../screens/GamesScreen';
 import ProgressScreen from '../screens/ProgressScreen';
+import UserProfileScreen from '../screens/UserProfileScreen';
+import type { MainStackParamList } from '../types/navigation';
 
 const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator<MainStackParamList>();
 
 const CustomTabBarButton = ({ children, onPress }) => (
   <TouchableOpacity
@@ -34,6 +38,33 @@ const CustomTabBarButton = ({ children, onPress }) => (
   </TouchableOpacity>
 );
 
+const MainStack = () => (
+  <Stack.Navigator
+    screenOptions={{
+      headerStyle: {
+        backgroundColor: '#6A1B9A',
+      },
+      headerTintColor: '#FFF',
+      headerTitleStyle: {
+        fontWeight: 'bold',
+      },
+    }}>
+    <Stack.Screen
+      name="Home"
+      component={HomeScreen}
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen
+      name="Profile"
+      component={UserProfileScreen}
+      options={{
+        headerTitle: 'Profile',
+        headerBackTitle: 'Back',
+      }}
+    />
+  </Stack.Navigator>
+);
+
 const MainNavigator = () => {
   return (
     <Tab.Navigator
@@ -46,8 +77,8 @@ const MainNavigator = () => {
       }}
     >
       <Tab.Screen
-        name="Home"
-        component={HomeScreen}
+        name="MainStack"
+        component={MainStack}
         options={{
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="home" color={color} size={size} />
