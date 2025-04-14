@@ -5,6 +5,9 @@ export const API_CONFIG = {
   
   // API Endpoints
   ENDPOINTS: {
+    // System endpoints
+    HEALTH: '/health',
+
     // Auth endpoints
     LOGIN: '/auth/login',
     REGISTER: '/auth/register',
@@ -25,6 +28,9 @@ export const API_CONFIG = {
     LESSONS: '/lessons',
     PROGRESS: '/progress',
     ACHIEVEMENTS: '/achievements',
+    
+    // AR endpoints
+    AR_MODELS: '/arModels',
   },
   
   // API Timeouts (in milliseconds)

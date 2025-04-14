@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
+  Image as RNImage,
   SafeAreaView,
   ScrollView,
   Modal,
@@ -12,6 +12,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Animated as RNAnimated,
 } from 'react-native';
 import {
   ViroARScene,
@@ -28,57 +29,14 @@ import {
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { check, request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import ErrorBoundary from '../components/ErrorBoundary';
-
-interface ModelInfo {
-  title: string;
-  iconName: string;
-  description: string;
-  parts?: { name: string; description: string }[];
-}
-
-// Pre-require 3D models to improve loading time
-const models = {
-  'Human Heart': require('../assets/3d/heart.obj'),
-  'Solar System': require('../assets/3d/solar_system.obj'),
-  'Dinosaur': require('../assets/3d/dinosaur.obj'),
-};
-
-// Memoized model data
-const modelData = {
-  'Human Heart': {
-    title: 'Human Heart',
-    iconName: 'heart-pulse',
-    description: 'The human heart is a muscular organ that pumps blood throughout the body.',
-    parts: [
-      { name: 'Left Ventricle', description: 'Pumps oxygenated blood to the body' },
-      { name: 'Right Ventricle', description: 'Pumps blood to the lungs' },
-      { name: 'Left Atrium', description: 'Receives oxygenated blood from lungs' },
-      { name: 'Right Atrium', description: 'Receives deoxygenated blood from body' },
-    ],
-  },
-  'Solar System': {
-    title: 'Solar System',
-    iconName: 'solar-system',
-    description: 'Our solar system consists of the Sun and celestial objects bound to it by gravity.',
-    parts: [
-      { name: 'Sun', description: 'The star at the center of our solar system' },
-      { name: 'Earth', description: 'The third planet from the Sun' },
-      { name: 'Mars', description: 'The fourth planet from the Sun' },
-      { name: 'Jupiter', description: 'The largest planet in our solar system' },
-    ],
-  },
-  'Dinosaur': {
-    title: 'Dinosaur',
-    iconName: 'dinosaur',
-    description: 'Dinosaurs were the dominant terrestrial vertebrates for over 160 million years.',
-    parts: [
-      { name: 'Skull', description: 'The bony structure of the head' },
-      { name: 'Vertebrae', description: 'The bones that make up the spine' },
-      { name: 'Ribs', description: 'Bones that protect internal organs' },
-      { name: 'Limbs', description: 'Used for movement and support' },
-    ],
-  },
-} as const;
+import LinearGradient from 'react-native-linear-gradient';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store/store';
+import { fetchARModels, setSelectedModel } from '../store/slices/arModelsSlice';
+import { useAppDispatch } from '../hooks/useAppDispatch';
+import { API_CONFIG } from '../config/api';
+import axios from 'axios';
+import { AnyAction } from '@reduxjs/toolkit';
 
 interface ModelCardProps {
   title: string;
@@ -87,20 +45,158 @@ interface ModelCardProps {
   onPress: () => void;
 }
 
+interface ModelTransitionProps {
+  isVisible: boolean;
+  model: React.ReactNode;
+  style: any;
+}
+
+// Update screen dimensions and add constants for layout
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const MODEL_PANEL_HEIGHT = SCREEN_HEIGHT * 0.25;
+const MODEL_CARD_WIDTH = 130;
+const MODEL_CARD_HEIGHT = 170;
+const MODEL_PREVIEW_SIZE = 80;
+const DEFAULT_MODEL_SCALE = 0.7;
+
+// Add this after the screen dimensions
+const PRELOAD_ADJACENT_MODELS = 2; // Number of models to preload on each side
+
+// Helper function to get icon based on category
+const getCategoryIcon = (category: string): string => {
+  const categoryIcons: { [key: string]: string } = {
+    'Space': 'planet',
+    'Animals': 'paw',
+    'Human Body': 'human',
+    'Plants': 'flower',
+    'Chemistry': 'flask',
+    'Physics': 'atom',
+    'Math': 'calculator',
+    'Technology': 'robot',
+    'Solar System': 'sun-wireless',
+    'Dinosaurs': 'dinosaur',
+  };
+  return categoryIcons[category] || 'cube-outline';
+};
+
 // Memoized components
-const ModelCard = React.memo(({ title, iconName, isSelected, onPress }: ModelCardProps) => (
-  <TouchableOpacity
-    style={[styles.modelCard, isSelected && styles.selectedModelCard]}
-    onPress={onPress}>
-    <MaterialCommunityIcons 
-      name={iconName} 
-      size={40} 
-      color={isSelected ? '#6A1B9A' : '#666666'} 
-      style={styles.cardIcon} 
-    />
-    <Text style={[styles.modelTitle, isSelected && styles.selectedModelTitle]}>{title}</Text>
-  </TouchableOpacity>
-));
+const ModelCard = React.memo(({ title, iconName, isSelected, onPress }: ModelCardProps) => {
+  const scaleAnim = React.useRef(new RNAnimated.Value(1)).current;
+  const [imageError, setImageError] = useState(false);
+
+  React.useEffect(() => {
+    RNAnimated.spring(scaleAnim, {
+      toValue: isSelected ? 1.05 : 1,
+      useNativeDriver: true,
+      friction: 8,
+    }).start();
+  }, [isSelected]);
+
+  const arModels = useSelector((state: RootState) => state.arModels.models);
+  const modelData = useMemo(() => 
+    arModels.find(m => m.name === title),
+    [arModels, title]
+  );
+
+  if (!modelData) return null;
+
+  const categoryIcon = getCategoryIcon(modelData.category);
+  const gradientColors = isSelected 
+    ? ['#8E2DE2', '#6A1B9A']
+    : ['#FFFFFF', '#F8F8F8'];
+
+  const renderPreviewContent = () => {
+    if (modelData.previewImage && !imageError) {
+      return (
+        <RNImage 
+          source={{ uri: modelData.previewImage }}
+          style={styles.modelPreviewImage}
+          resizeMode="contain"
+          onError={() => setImageError(true)}
+        />
+      );
+    }
+    return (
+      <MaterialCommunityIcons 
+        name={categoryIcon}
+        size={50} 
+        color={isSelected ? '#FFFFFF' : '#6A1B9A'} 
+      />
+    );
+  };
+
+  return (
+    <RNAnimated.View 
+      style={[
+        styles.modelCard,
+        isSelected && styles.selectedModelCard,
+        { transform: [{ scale: scaleAnim }] }
+      ]}>
+      <TouchableOpacity 
+        onPress={onPress} 
+        activeOpacity={0.7}
+        style={styles.modelCardTouchable}>
+        <LinearGradient
+          colors={gradientColors}
+          style={styles.modelCardGradient}>
+          <View style={[
+            styles.modelImageContainer,
+            isSelected && styles.selectedModelImageContainer
+          ]}>
+            {renderPreviewContent()}
+          </View>
+
+          <View style={styles.modelCardContent}>
+            <Text style={[
+              styles.modelTitle,
+              isSelected && styles.selectedModelTitle
+            ]}>
+              {modelData.name}
+            </Text>
+
+            <View style={styles.modelCategory}>
+              <MaterialCommunityIcons 
+                name={categoryIcon}
+                size={16} 
+                color={isSelected ? '#FFD700' : '#6A1B9A'} 
+              />
+              <Text style={[
+                styles.categoryText,
+                isSelected && styles.selectedCategoryText
+              ]}>
+                {modelData.category}
+              </Text>
+            </View>
+
+            <View style={styles.modelComplexity}>
+              {[...Array(getComplexityStars(modelData.complexity))].map((_, i) => (
+                <MaterialCommunityIcons 
+                  key={i}
+                  name="star" 
+                  size={14} 
+                  color={isSelected ? '#FFD700' : '#6A1B9A'} 
+                  style={{ marginHorizontal: 1 }}
+                />
+              ))}
+            </View>
+          </View>
+        </LinearGradient>
+      </TouchableOpacity>
+    </RNAnimated.View>
+  );
+});
+
+// Helper function to convert complexity to number of stars
+const getComplexityStars = (complexity: string): number => {
+  const complexityMap: { [key: string]: number } = {
+    'Beginner': 1,
+    'Easy': 2,
+    'Medium': 3,
+    'Hard': 4,
+    'Advanced': 5
+  };
+  return complexityMap[complexity] || 3;
+};
 
 const LoadingView = React.memo(() => (
   <View style={styles.loadingContainer}>
@@ -109,242 +205,424 @@ const LoadingView = React.memo(() => (
   </View>
 ));
 
-const ARScene = React.memo(({ model, scale, rotation }: { model: string; scale: number; rotation: [number, number, number] }) => {
+// Update the ModelTransition component
+const ModelTransition: React.FC<ModelTransitionProps> = React.memo(({ isVisible, model, style }) => {
+  const fadeAnim = React.useRef(new RNAnimated.Value(0)).current;
+
+  React.useEffect(() => {
+    RNAnimated.timing(fadeAnim, {
+      toValue: isVisible ? 1 : 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [isVisible, fadeAnim]);
+
+  return (
+    <RNAnimated.View style={[style, { opacity: fadeAnim }]}>
+      {model}
+    </RNAnimated.View>
+  );
+});
+
+// Update the ARScene component with better model positioning and scaling
+const ARScene = React.memo(({ model, scale = DEFAULT_MODEL_SCALE, rotation }: { model: string; scale?: number; rotation: [number, number, number] }) => {
+  const dispatch = useAppDispatch();
   const [trackingState, setTrackingState] = useState<ViroTrackingStateConstants>(
     ViroTrackingStateConstants.TRACKING_UNAVAILABLE
   );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const modelScale = useMemo(() => 
-    [scale * 0.2, scale * 0.2, scale * 0.2] as [number, number, number],
-    [scale]
+  const [modelLoaded, setModelLoaded] = useState(false);
+  const arModels = useSelector((state: RootState) => state.arModels.models);
+  
+  // Default position for the 3D model
+  const defaultPosition: [number, number, number] = [0, 0, -2];
+  
+  const selectedModelData = useMemo(() => 
+    arModels.find(m => m.name === model),
+    [arModels, model]
   );
 
+  const modelScale = useMemo((): [number, number, number] => {
+    const baseScale = scale || DEFAULT_MODEL_SCALE;
+    return [baseScale, baseScale, baseScale];
+  }, [scale]);
+
+  const modelType = useMemo(() => {
+    const fileExt = selectedModelData?.modelFile?.split('.').pop()?.toUpperCase() || 'GLB';
+    return fileExt === 'GLTF' ? 'GLTF' : 'GLB';
+  }, [selectedModelData]);
+
+  // Improved URL formatting utility
+  const formatModelUrl = useCallback((modelFile: string) => {
+    if (!modelFile) {
+      console.error('No model file provided');
+      return null;
+    }
+
+    try {
+      // If it's already a full URL, return it
+      if (modelFile.startsWith('http')) {
+        return modelFile;
+      }
+
+      // Clean up the model path
+      const cleanPath = modelFile
+        .replace(/^\/+/, '')
+        .replace(/^(uploads\/models\/)+/, '')
+        .replace(/\/+/g, '/');
+
+      // Use the server URL
+      const finalUrl = `http://192.168.8.192:5000/uploads/models/${cleanPath}`;
+      console.log('Loading 3D model from:', finalUrl);
+      return finalUrl;
+    } catch (error) {
+      console.error('Error formatting model URL:', error);
+      return null;
+    }
+  }, []);
+
+  const modelUrl = useMemo(() => {
+    if (!selectedModelData?.modelFile) {
+      console.error('No model file in selected data');
+      return null;
+    }
+    const url = formatModelUrl(selectedModelData.modelFile);
+    console.log('Final model URL:', url);
+    return url;
+  }, [selectedModelData, formatModelUrl]);
+
+  // Reset loading state when model changes
+  useEffect(() => {
+    console.log('Model changed to:', model);
+    setIsLoading(true);
+    setModelLoaded(false);
+    setError(null);
+  }, [model]);
+
   const onInitialized = useCallback((state: ViroTrackingStateConstants, reason: ViroTrackingReason) => {
+    console.log('AR Tracking State:', state, 'Reason:', reason);
     setTrackingState(state);
     if (state === ViroTrackingStateConstants.TRACKING_NORMAL) {
       setIsLoading(false);
     }
   }, []);
 
-  const modelSource = useMemo(() => {
-    try {
-      return models[model as keyof typeof models];
-    } catch (err) {
-      setError('Failed to load 3D model');
-      return null;
-    }
-  }, [model]);
-
-  if (error) {
-    return (
+  // Loading state component with progress indicator
+  const LoadingState = () => (
+    <ViroNode position={defaultPosition} scale={[1, 1, 1]}>
       <ViroText
-        text={error}
+        text={`Loading ${selectedModelData?.name || '3D Model'}...`}
         scale={[0.5, 0.5, 0.5]}
-        position={[0, 0, -1]}
-        style={styles.errorText}
+        position={[0, 0.5, 0]}
+        style={{
+          fontFamily: 'Arial',
+          fontSize: 24,
+          color: '#FFFFFF',
+          textAlignVertical: 'center',
+          textAlign: 'center',
+        }}
+        width={2}
+        height={0.5}
       />
-    );
-  }
+    </ViroNode>
+  );
 
   return (
     <ViroARScene onTrackingUpdated={onInitialized}>
       <ViroAmbientLight color="#FFFFFF" intensity={200} />
       <ViroSpotLight
         innerAngle={5}
-        outerAngle={90}
-        direction={[0, -1, -0.2]}
+        outerAngle={45}
+        direction={[0, -1, -.2]}
         position={[0, 3, 1]}
         color="#FFFFFF"
+        intensity={250}
         castsShadow={true}
       />
-      <ViroNode position={[0, 0, -1]} dragType="FixedToWorld" onDrag={() => {}}>
-        <Viro3DObject
-          source={modelSource}
-          scale={modelScale}
-          rotation={rotation}
-          position={[0, 0, -1]}
-          type="OBJ"
-          animation={{name: "rotate", run: true, loop: true}}
-          onLoadStart={() => setIsLoading(true)}
-          onLoadEnd={() => setIsLoading(false)}
-          onError={(event) => setError(`Error loading model: ${event}`)}
-        />
-      </ViroNode>
-      {(trackingState !== ViroTrackingStateConstants.TRACKING_NORMAL || isLoading) && (
-        <ViroText
-          text={isLoading ? 'Loading...' : `AR Tracking: ${trackingState}`}
-          scale={[0.5, 0.5, 0.5]}
-          position={[0, 0, -1]}
-          style={styles.trackingText}
-        />
+      
+      {!error && modelUrl && (
+        <ViroNode 
+          position={defaultPosition}
+          dragType="FixedToWorld"
+          onDrag={() => {}}
+          visible={true}>
+          <Viro3DObject
+            source={{ 
+              uri: modelUrl,
+              headers: {
+                'Accept': '*/*',
+                'Content-Type': 'application/octet-stream',
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+              }
+            }}
+            resources={[]}
+            scale={modelScale}
+            position={[0, 0, 0]}
+            rotation={rotation}
+            type={modelType}
+            animation={{name: "rotate", run: true, loop: true}}
+            onLoadStart={() => {
+              console.log('Starting to load 3D model:', modelUrl);
+              setIsLoading(true);
+              setModelLoaded(false);
+              setError(null);
+            }}
+            onLoadEnd={() => {
+              console.log('3D model loaded successfully:', modelUrl);
+              setIsLoading(false);
+              setModelLoaded(true);
+            }}
+            onError={(event: any) => {
+              const errorMessage = event?.nativeEvent?.error || 'Unknown error';
+              console.error('3D model load error:', errorMessage, 'URL:', modelUrl);
+              setError(`Failed to load model: ${errorMessage}`);
+              setIsLoading(false);
+              setModelLoaded(false);
+            }}
+          />
+        </ViroNode>
+      )}
+
+      {isLoading && <LoadingState />}
+      {error && (
+        <ViroNode position={[0, 0, -2]}>
+          <ViroText
+            text={error}
+            scale={[0.4, 0.4, 0.4]}
+            position={[0, 0, 0]}
+            style={{
+              fontFamily: 'Arial',
+              fontSize: 20,
+              color: '#FF0000',
+              textAlignVertical: 'center',
+              textAlign: 'center',
+            }}
+            width={2}
+            height={0.5}
+          />
+        </ViroNode>
       )}
     </ViroARScene>
   );
 });
 
-const InfoModal = React.memo(({ isVisible, model, onClose }: { isVisible: boolean; model: string; onClose: () => void }) => (
-  <Modal visible={isVisible} transparent animationType="slide">
-    <View style={styles.modalContainer}>
-      <View style={styles.modalContent}>
-        <Text style={styles.modalTitle}>{modelData[model].title}</Text>
-        <Text style={styles.modalDescription}>{modelData[model].description}</Text>
-        <Text style={styles.modalSubtitle}>Key Parts:</Text>
-        {modelData[model].parts?.map((part, index) => (
-          <View key={index} style={styles.partItem}>
-            <Text style={styles.partName}>{part.name}</Text>
-            <Text style={styles.partDescription}>{part.description}</Text>
-          </View>
-        ))}
-        <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-          <Text style={styles.closeButtonText}>Close</Text>
-        </TouchableOpacity>
+const InfoModal = React.memo(({ isVisible, model, onClose }: { isVisible: boolean; model: string; onClose: () => void }) => {
+  const arModels = useSelector((state: RootState) => state.arModels.models);
+  const selectedModel = useMemo(() => 
+    arModels.find(m => m.name === model),
+    [arModels, model]
+  );
+
+  if (!selectedModel) return null;
+
+  return (
+    <Modal visible={isVisible} transparent animationType="slide">
+      <View style={styles.modalContainer}>
+        <LinearGradient
+          colors={['#FFFFFF', '#F8F8F8']}
+          style={styles.modalContent}>
+          <MaterialCommunityIcons 
+            name="cube-outline" 
+            size={48} 
+            color="#6A1B9A" 
+            style={styles.modalIcon}
+          />
+          <Text style={styles.modalTitle}>{selectedModel.name}</Text>
+          <Text style={styles.modalDescription}>{selectedModel.description}</Text>
+          <LinearGradient
+            colors={['#8E2DE2', '#6A1B9A']}
+            style={styles.modalDivider}
+          />
+          <Text style={styles.modalSubtitle}>Details:</Text>
+          <ScrollView style={styles.partsList}>
+            <View style={styles.partItem}>
+              <MaterialCommunityIcons name="circle-medium" size={24} color="#6A1B9A" />
+              <View style={styles.partContent}>
+                <Text style={styles.partName}>Category</Text>
+                <Text style={styles.partDescription}>{selectedModel.name}</Text>
+              </View>
+            </View>
+            <View style={styles.partItem}>
+              <MaterialCommunityIcons name="circle-medium" size={24} color="#6A1B9A" />
+              <View style={styles.partContent}>
+                <Text style={styles.partName}>Complexity</Text>
+                <Text style={styles.partDescription}>{selectedModel.description}</Text>
+              </View>
+            </View>
+            <View style={styles.partItem}>
+              <MaterialCommunityIcons name="circle-medium" size={24} color="#6A1B9A" />
+              <View style={styles.partContent}>
+                <Text style={styles.partName}>Module</Text>
+                <Text style={styles.partDescription}>{selectedModel.module.title}</Text>
+              </View>
+            </View>
+          </ScrollView>
+          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+            <LinearGradient
+              colors={['#8E2DE2', '#6A1B9A']}
+              style={styles.closeButtonGradient}>
+              <Text style={styles.closeButtonText}>Close</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </LinearGradient>
       </View>
-    </View>
-  </Modal>
-));
+    </Modal>
+  );
+});
 
 const ARLearnScreen: React.FC = () => {
-  const [selectedModel, setSelectedModel] = useState('Human Heart');
-  const [scale, setScale] = useState(1);
-  const [rotation, setRotation] = useState<[number, number, number]>([0, 0, 0]);
-  const [showInfo, setShowInfo] = useState(false);
-  const [hasCameraPermission, setHasCameraPermission] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const dispatch = useAppDispatch();
+  const [selectedModel, setLocalSelectedModel] = useState<string | null>(null);
+  const { models = [], status, error } = useSelector((state: RootState) => state.arModels);
+  const isLoading = status === 'loading';
+  const fadeAnim = useRef(new RNAnimated.Value(1)).current;
 
+  // Load models when component mounts
   useEffect(() => {
-    checkCameraPermission();
-  }, []);
+    dispatch(fetchARModels());
+  }, [dispatch]);
 
-  const checkCameraPermission = useCallback(async () => {
-    try {
-      const permission = Platform.OS === 'ios' 
-        ? PERMISSIONS.IOS.CAMERA 
-        : PERMISSIONS.ANDROID.CAMERA;
-      
-      const result = await check(permission);
-      
-      if (result === RESULTS.GRANTED) {
-        setHasCameraPermission(true);
-        setIsLoading(false);
-      } else if (result === RESULTS.DENIED) {
-        const permissionResult = await request(permission);
-        setHasCameraPermission(permissionResult === RESULTS.GRANTED);
-        setIsLoading(false);
-      } else {
-        Alert.alert(
-          'Camera Permission Required',
-          'Please enable camera access in your device settings to use AR features.',
-          [{ text: 'OK', onPress: () => setIsLoading(false) }]
-        );
-      }
-    } catch (error) {
-      console.error('Error checking camera permission:', error);
-      setIsLoading(false);
+  // Enhanced model selection handler with animation
+  const handleModelSelect = useCallback((modelName: string) => {
+    console.log('Selecting model:', modelName);
+    if (modelName === selectedModel) return;
+
+    // Find the selected model data
+    const modelData = models.find(m => m.name === modelName);
+    if (!modelData) {
+      console.error('Selected model not found:', modelName);
+      return;
     }
-  }, []);
 
-  const handleZoomIn = useCallback(() => {
-    setScale(prev => Math.min(prev + 0.2, 2));
-  }, []);
+    console.log('Selected model data:', modelData);
 
-  const handleZoomOut = useCallback(() => {
-    setScale(prev => Math.max(prev - 0.2, 0.5));
-  }, []);
+    // Fade out current model
+    RNAnimated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 150,
+      useNativeDriver: true,
+    }).start(() => {
+      setLocalSelectedModel(modelName);
+      dispatch(setSelectedModel(modelName));
+      
+      // Fade in new model
+      RNAnimated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
+    });
+  }, [dispatch, selectedModel, fadeAnim, models]);
 
-  const handleReset = useCallback(() => {
-    setScale(1);
-    setRotation([0, 0, 0]);
-  }, []);
+  // Initialize first model when models are loaded
+  useEffect(() => {
+    if (models.length > 0 && !selectedModel) {
+      const firstModel = models[0];
+      console.log('Initializing with first model:', firstModel.name);
+      handleModelSelect(firstModel.name);
+    }
+  }, [models, selectedModel, handleModelSelect]);
 
-  const handleRotate = useCallback(() => {
-    setRotation(prev => [prev[0], prev[1] + 90, prev[2]]);
-  }, []);
+  const handleRetry = useCallback(() => {
+    dispatch(fetchARModels());
+  }, [dispatch]);
 
-  const handleModelSelect = useCallback((title: string) => {
-    setSelectedModel(title);
-  }, []);
-
-  const toggleInfo = useCallback(() => {
-    setShowInfo(prev => !prev);
-  }, []);
-
-  if (isLoading) {
-    return <LoadingView />;
-  }
-
-  if (!hasCameraPermission) {
-    return (
-      <View style={styles.permissionContainer}>
-        <MaterialCommunityIcons name="camera-off" size={48} color="#6A1B9A" />
-        <Text style={styles.permissionTitle}>Camera Permission Required</Text>
-        <Text style={styles.permissionText}>
-          Please enable camera access in your device settings to use AR features.
+  const renderModelSelectionPanel = () => (
+    <View style={[styles.modelSelectionPanel, selectedModel && styles.collapsedPanel]}>
+      <LinearGradient
+        colors={['#8E2DE2', '#6A1B9A']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.modelSelectionHeader}>
+        <Text style={styles.modelSelectionTitle}>
+          {selectedModel ? 'Current Model' : 'Choose Your 3D Model'}
         </Text>
-        <TouchableOpacity style={styles.permissionButton} onPress={checkCameraPermission}>
-          <Text style={styles.permissionButtonText}>Check Permission Again</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+        {!selectedModel && (
+          <Text style={styles.modelSelectionSubtitle}>Explore and learn in AR!</Text>
+        )}
+      </LinearGradient>
+
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#6A1B9A" />
+          <Text style={styles.loadingText}>Loading 3D Models...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <MaterialCommunityIcons name="alert-circle" size={40} color="#FF6B6B" />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={handleRetry}>
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      ) : Array.isArray(models) && models.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.modelCardsContainer,
+            selectedModel && styles.collapsedModelCards
+          ]}
+          decelerationRate="fast"
+          snapToInterval={MODEL_CARD_WIDTH + 12}
+          snapToAlignment="center"
+          pagingEnabled>
+          {models.map((model) => (
+            <ModelCard
+              key={model._id}
+              title={model.name}
+              iconName={getCategoryIcon(model.category)}
+              isSelected={selectedModel === model.name}
+              onPress={() => handleModelSelect(model.name)}
+            />
+          ))}
+        </ScrollView>
+      ) : (
+        <View style={styles.errorContainer}>
+          <MaterialCommunityIcons name="cube-outline" size={40} color="#6A1B9A" />
+          <Text style={styles.errorText}>No models available</Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={handleRetry}>
+            <Text style={styles.retryButtonText}>Refresh</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
 
   return (
     <ErrorBoundary>
       <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>{selectedModel}</Text>
-          <Text style={styles.subtitle}>Tap and explore to learn more about the parts!</Text>
-          <TouchableOpacity onPress={toggleInfo} style={styles.infoButton}>
-            <MaterialCommunityIcons name="information" size={24} color="#6A1B9A" />
-          </TouchableOpacity>
+        <View style={styles.arContainer}>
+          {selectedModel ? (
+            <ViroARSceneNavigator
+              key={selectedModel}
+              autofocus={true}
+              initialScene={{
+                scene: () => (
+                  <ARScene 
+                    model={selectedModel} 
+                    scale={DEFAULT_MODEL_SCALE} 
+                    rotation={[0, 0, 0]}
+                  />
+                ),
+              }}
+              style={styles.arView}
+            />
+          ) : (
+            <View style={styles.placeholderContainer}>
+              <MaterialCommunityIcons name="cube-scan" size={64} color="#6A1B9A" />
+              <Text style={styles.placeholderText}>Select a model to start AR experience</Text>
+            </View>
+          )}
         </View>
-
-        <View style={styles.cameraContainer}>
-          <ViroARSceneNavigator
-            autofocus={true}
-            initialScene={{
-              scene: () => <ARScene model={selectedModel} scale={scale} rotation={rotation} />,
-            }}
-            style={styles.arView}
-          />
-        </View>
-
-        <View style={styles.controls}>
-          <TouchableOpacity style={styles.controlButton} onPress={handleReset}>
-            <MaterialCommunityIcons name="refresh" size={24} color="#000" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.controlButton} onPress={handleZoomIn}>
-            <MaterialCommunityIcons name="magnify-plus-outline" size={24} color="#000" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.controlButton} onPress={handleZoomOut}>
-            <MaterialCommunityIcons name="magnify-minus-outline" size={24} color="#000" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.controlButton} onPress={handleRotate}>
-            <MaterialCommunityIcons name="rotate-3d" size={24} color="#000" />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.modelSelection}>
-          <Text style={styles.sectionTitle}>Choose a 3D Model:</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {Object.entries(modelData).map(([key, model]) => (
-              <ModelCard
-                key={key}
-                title={model.title}
-                iconName={model.iconName}
-                isSelected={selectedModel === model.title}
-                onPress={() => handleModelSelect(model.title)}
-              />
-            ))}
-          </ScrollView>
-        </View>
-
-        <InfoModal
-          isVisible={showInfo}
-          model={selectedModel}
-          onClose={toggleInfo}
-        />
+        {renderModelSelectionPanel()}
       </SafeAreaView>
     </ErrorBoundary>
   );
@@ -355,202 +633,316 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F5F5',
   },
-  header: {
-    padding: 16,
-    backgroundColor: '#F0F0F0',
-    borderRadius: 8,
-    margin: 16,
-    flexDirection: 'column',
-  },
-  headerIcon: {
-    position: 'absolute',
-    right: 16,
-    top: 16,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#6A1B9A',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#666666',
-    marginTop: 4,
-  },
-  cameraContainer: {
+  arContainer: {
     flex: 1,
-    margin: 16,
+    position: 'relative',
     backgroundColor: '#000',
-    borderRadius: 16,
-    overflow: 'hidden',
+    height: SCREEN_HEIGHT - MODEL_PANEL_HEIGHT,
   },
   arView: {
     flex: 1,
+    height: SCREEN_HEIGHT - MODEL_PANEL_HEIGHT,
   },
-  controls: {
+  floatingHeader: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    right: 16,
     flexDirection: 'row',
-    justifyContent: 'center',
-    padding: 16,
-    gap: 20,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 20,
+    padding: 12,
+  },
+  modelName: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  infoButton: {
+    padding: 4,
+  },
+  floatingControls: {
+    position: 'absolute',
+    right: 16,
+    top: '50%',
+    transform: [{ translateY: -50 }],
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 20,
+    padding: 8,
   },
   controlButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#E0E0E0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modelSelection: {
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 12,
-    color: '#333',
-  },
-  modelCard: {
-    width: 120,
-    height: 120,
-    marginRight: 12,
-    borderRadius: 12,
-    backgroundColor: '#FFF',
     padding: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
+    marginVertical: 4,
   },
-  selectedModelCard: {
-    borderColor: '#6A1B9A',
+  modelSelectionPanel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    height: MODEL_PANEL_HEIGHT,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 16,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
-  modelTitle: {
-    fontSize: 12,
-    textAlign: 'center',
-    color: '#333',
+  modelSelectionHeader: {
+    padding: 16,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
   },
-  trackingText: {
-    fontFamily: 'Arial',
-    fontSize: 28,
+  modelSelectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
     color: '#FFFFFF',
-    textAlignVertical: 'center',
+    marginBottom: 4,
+  },
+  modelSelectionSubtitle: {
+    fontSize: 14,
+    color: '#E0E0E0',
+  },
+  modelCardsContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 12,
+    flexGrow: 1,
+  },
+  loadingContainer: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#666',
+  },
+  errorContainer: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  errorText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#FF6B6B',
     textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: '#6A1B9A',
+    borderRadius: 20,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   modalContainer: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
   },
   modalContent: {
-    backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 20,
-    width: '90%',
+    width: '100%',
     maxHeight: '80%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  modalIcon: {
+    alignSelf: 'center',
+    marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#6A1B9A',
-    marginBottom: 10,
+    textAlign: 'center',
+    marginBottom: 12,
   },
   modalDescription: {
     fontSize: 16,
-    color: '#333',
-    marginBottom: 20,
+    color: '#666',
+    lineHeight: 24,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  modalDivider: {
+    height: 2,
+    width: '100%',
+    marginVertical: 16,
+    borderRadius: 1,
   },
   modalSubtitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 10,
+    marginBottom: 16,
+  },
+  partsList: {
+    maxHeight: 300,
   },
   partItem: {
-    marginBottom: 15,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    backgroundColor: '#F8F8F8',
+    padding: 12,
+    borderRadius: 12,
+  },
+  partContent: {
+    flex: 1,
+    marginLeft: 8,
   },
   partName: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#6A1B9A',
+    marginBottom: 4,
   },
   partDescription: {
     fontSize: 14,
     color: '#666',
+    lineHeight: 20,
   },
   closeButton: {
-    backgroundColor: '#6A1B9A',
-    padding: 12,
-    borderRadius: 10,
+    marginTop: 24,
+    overflow: 'hidden',
+    borderRadius: 12,
+  },
+  closeButtonGradient: {
+    paddingVertical: 14,
+    paddingHorizontal: 24,
     alignItems: 'center',
-    marginTop: 20,
   },
   closeButtonText: {
-    color: 'white',
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
   },
-  infoButton: {
-    position: 'absolute',
-    right: 16,
-    top: 16,
-  },
-  selectedModelTitle: {
-    color: '#6A1B9A',
-    fontWeight: 'bold',
-  },
-  cardIcon: {
-    marginBottom: 8,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#666',
-  },
-  permissionContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#F5F5F5',
-  },
-  permissionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  permissionText: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  permissionButton: {
-    backgroundColor: '#6A1B9A',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  permissionButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  errorText: {
+  helpText: {
     fontFamily: 'Arial',
     fontSize: 28,
-    color: '#FF0000',
+    color: '#FFFFFF',
     textAlignVertical: 'center',
     textAlign: 'center',
+  },
+  modelCard: {
+    width: MODEL_CARD_WIDTH,
+    height: MODEL_CARD_HEIGHT,
+    marginRight: 12,
+    borderRadius: 16,
+    backgroundColor: '#FFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    overflow: 'hidden',
+  },
+  selectedModelCard: {
+    shadowColor: '#6A1B9A',
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+  },
+  modelCardTouchable: {
+    flex: 1,
+  },
+  modelCardGradient: {
+    flex: 1,
+    padding: 12,
+    alignItems: 'center',
+  },
+  modelImageContainer: {
+    width: MODEL_PREVIEW_SIZE,
+    height: MODEL_PREVIEW_SIZE,
+    backgroundColor: 'rgba(106, 27, 154, 0.1)',
+    borderRadius: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  selectedModelImageContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  modelPreviewImage: {
+    width: MODEL_PREVIEW_SIZE - 10,
+    height: MODEL_PREVIEW_SIZE - 10,
+    borderRadius: 10,
+  },
+  modelCardContent: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  modelTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    color: '#333',
+    marginBottom: 4,
+    paddingHorizontal: 4,
+  },
+  selectedModelTitle: {
+    color: '#FFFFFF',
+  },
+  modelCategory: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  categoryText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  selectedCategoryText: {
+    color: '#FFFFFF',
+  },
+  modelComplexity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  collapsedPanel: {
+    height: MODEL_PANEL_HEIGHT * 0.6,
+  },
+  collapsedModelCards: {
+    paddingVertical: 4,
+    gap: 8,
+  },
+  placeholderContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+  },
+  placeholderText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+  },
+  modelContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
 });
 

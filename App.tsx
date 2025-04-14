@@ -11,6 +11,7 @@ import ForgotPasswordScreen from './src/screens/auth/ForgotPasswordScreen';
 import MainNavigator from './src/navigation/MainNavigator';
 import { useAppSelector } from './src/store/hooks';
 import { ToastProvider } from './src/context/ToastContext';
+import ARLearnScreen from './src/screens/ARLearnScreen';
 
 const Stack = createNativeStackNavigator();
 
