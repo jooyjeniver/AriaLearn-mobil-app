@@ -1,50 +1,60 @@
 import { NavigatorScreenParams } from '@react-navigation/native';
 import type { SubjectType } from './lessons';
+import type { Module } from './modules';
+
+export type LessonsStackParamList = {
+  LessonsList: {
+    selectedFilter?: string;
+  };
+  Subject: {
+    module: {
+      id: string;
+      name: string;
+      icon: string;
+      description: string;
+      difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
+      category: string;
+      lessons: string[];
+      color?: string;
+    }
+  };
+};
 
 export type SubjectStackParamList = {
   HomeTab: undefined;
-  'Myself and My Family': undefined;
-  'Our School and Community': undefined;
-  'Good Habits and Citizenship': undefined;
-  'My Environment': undefined;
-  'Time and History': undefined;
-  'Transport and Communication': undefined;
   UserProfile: undefined;
-  'AR Learn': undefined;
-  Science: undefined;
-  SubjectDetail: { subjectId: string };
-  Lesson: { lessonId: string };
-  Quiz: { quizId: string };
 };
 
 export type SubjectScreenNames = Exclude<keyof SubjectStackParamList, 'HomeTab'>;
 
 export type RootTabParamList = {
   Home: undefined;
-  'My Lessons': { selectedFilter?: string } | undefined;
+  'My Lessons': NavigatorScreenParams<LessonsStackParamList>;
   Progress: undefined;
   Games: undefined;
 };
 
 export type RootStackParamList = {
-  Welcome: undefined;
-  Login: undefined;
-  Register: undefined;
+  Auth: undefined;
   Main: undefined;
-  Subject: { subjectId: string };
-  UserProfile: undefined;
-};
-
-export type AuthStackParamList = {
-  Login: undefined;
-  Signup: undefined;
-  ForgotPassword: undefined;
-  ApiTest: undefined;
+  'AR Learn': undefined;
 };
 
 export type MainStackParamList = {
   Home: undefined;
   Profile: undefined;
+  Subject: {
+    module: {
+      id: string;
+      name: string;
+      icon: string;
+      description: string;
+      difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
+      category: string;
+      lessons: string[];
+      color?: string;
+    }
+  };
 };
 
 export interface User {

@@ -1,7 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { API_CONFIG } from '../../config/api';
 import api from '../../services/api';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface Scale {
   x: number;
@@ -58,7 +57,6 @@ export const fetchARModels = createAsyncThunk(
     try {
       console.log('Fetching AR models from:', `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.AR_MODELS}`);
       const response = await api.get(API_CONFIG.ENDPOINTS.AR_MODELS);
-      
       // Validate response data structure
       if (!response.data || typeof response.data !== 'object') {
         console.error('Invalid response data:', response.data);
@@ -80,12 +78,23 @@ export const fetchARModels = createAsyncThunk(
       });
 
       // Transform the model data to ensure all required fields are present
+      // and convert relative URLs to absolute URLs
       const transformedModels = models.map(model => ({
         ...model,
+        modelFile: model.modelFile.startsWith('http') 
+          ? model.modelFile 
+          : `${API_CONFIG.BASE_URL}${model.modelFile}`,
+        previewImage: model.previewImage 
+          ? (model.previewImage.startsWith('http') 
+              ? model.previewImage 
+              : `${API_CONFIG.BASE_URL}${model.previewImage}`)
+          : '',
         scale: model.scale || { x: 1, y: 1, z: 1 },
         rotation: model.rotation || { x: 0, y: 0, z: 0 },
         module: model.module || { _id: '', title: '' },
-        textures: Array.isArray(model.textures) ? model.textures : [],
+        textures: Array.isArray(model.textures) ? model.textures.map(texture => 
+          texture.startsWith('http') ? texture : `${API_CONFIG.BASE_URL}${texture}`
+        ) : [],
         category: model.category || 'other',
         complexity: model.complexity || 'basic',
         isSample: Boolean(model.isSample)
@@ -108,7 +117,13 @@ const arModelsSlice = createSlice({
   initialState,
   reducers: {
     setSelectedModel: (state, action: PayloadAction<string>) => {
-      state.selectedModel = action.payload;
+      const modelExists = state.models.some(model => model.name === action.payload);
+      if (modelExists) {
+        state.selectedModel = action.payload;
+        state.error = null;
+      } else {
+        state.error = 'Selected model not found';
+      }
     },
     clearModels: (state) => {
       state.models = [];
@@ -127,6 +142,8 @@ const arModelsSlice = createSlice({
         state.status = 'succeeded';
         state.models = Array.isArray(action.payload) ? action.payload : [];
         state.error = null;
+        
+        // If there's no selected model but we have models, select the first one
         if (!state.selectedModel && state.models.length > 0) {
           state.selectedModel = state.models[0].name;
         }
@@ -135,6 +152,7 @@ const arModelsSlice = createSlice({
         state.status = 'failed';
         state.error = action.payload as string || 'Failed to fetch models';
         state.models = []; // Reset models on error
+        state.selectedModel = null; // Clear selected model on error
       });
   },
 });

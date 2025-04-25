@@ -9,7 +9,9 @@ import MyLessonsScreen from '../screens/MyLessonsScreen';
 import GamesScreen from '../screens/GamesScreen';
 import ProgressScreen from '../screens/ProgressScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
+import SubjectScreen from '../screens/SubjectScreen';
 import type { MainStackParamList } from '../types/navigation';
+
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator<MainStackParamList>();
@@ -62,6 +64,11 @@ const MainStack = () => (
         headerBackTitle: 'Back',
       }}
     />
+    <Stack.Screen
+      name="Subject"
+      component={SubjectScreen}
+      options={{ headerShown: false }}
+    />
   </Stack.Navigator>
 );
 
@@ -77,7 +84,7 @@ const MainNavigator = () => {
       }}
     >
       <Tab.Screen
-        name="MainStack"
+        name="Home"
         component={MainStack}
         options={{
           tabBarIcon: ({ color, size }) => (

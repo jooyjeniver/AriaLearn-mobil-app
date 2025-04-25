@@ -1,7 +1,13 @@
+import { Platform } from 'react-native';
+
 // API Configuration
 export const API_CONFIG = {
   // Base URL for API requests
-  BASE_URL: 'http://192.168.8.192:5000/api',
+  BASE_URL: __DEV__
+    ? Platform.OS === 'android'
+      ? 'http://192.168.8.192:5000/api'  // Android Emulator
+      : 'http://localhost:5000/api'  // iOS Simulator
+    : 'https://api.arialearn.com/api', // Production URL
   
   // API Endpoints
   ENDPOINTS: {
@@ -30,13 +36,21 @@ export const API_CONFIG = {
     ACHIEVEMENTS: '/achievements',
     
     // AR endpoints
-    AR_MODELS: '/arModels',
+    AR_MODELS: '/armodels',
+    AR_MODEL_DETAIL: (id: string) => `/armodels/${id}`,
+
+    // AI endpoints
+    ANALYZE_EMOTION: '/ai/analyze-emotion',
+    GENERATE_QUIZ: '/ai/generate-quiz',
+    GET_RECOMMENDATIONS: '/ai/recommendations',
+    GENERATE_GAME_STRATEGY: '/ai/game-strategy',
   },
   
   // API Timeouts (in milliseconds)
   TIMEOUTS: {
-    REQUEST: 10000, // 10 seconds
+    REQUEST: 15000, // 15 seconds
     UPLOAD: 30000,  // 30 seconds
+    MODEL_LOAD: 20000, // 20 seconds for 3D models
   },
   
   // API Headers

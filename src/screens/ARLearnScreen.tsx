@@ -20,14 +20,14 @@ import {
   ViroNode,
   ViroText,
   ViroTrackingStateConstants,
-  ViroTrackingReason,
+  ViroTrackingReason as ViroTrackingReasonType,
   Viro3DObject,
   ViroAmbientLight,
   ViroSpotLight,
   ViroAnimations,
+  ViroTrackingState,
 } from '@reactvision/react-viro';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { check, request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import ErrorBoundary from '../components/ErrorBoundary';
 import LinearGradient from 'react-native-linear-gradient';
 import { useSelector } from 'react-redux';
@@ -35,8 +35,6 @@ import { RootState } from '../store/store';
 import { fetchARModels, setSelectedModel } from '../store/slices/arModelsSlice';
 import { useAppDispatch } from '../hooks/useAppDispatch';
 import { API_CONFIG } from '../config/api';
-import axios from 'axios';
-import { AnyAction } from '@reduxjs/toolkit';
 
 interface ModelCardProps {
   title: string;
@@ -49,18 +47,19 @@ interface ModelTransitionProps {
   isVisible: boolean;
   model: React.ReactNode;
   style: any;
+  children?: React.ReactNode;
 }
 
 // Update screen dimensions and add constants for layout
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const MODEL_PANEL_HEIGHT = SCREEN_HEIGHT * 0.25;
-const MODEL_CARD_WIDTH = 130;
-const MODEL_CARD_HEIGHT = 170;
-const MODEL_PREVIEW_SIZE = 80;
+const MODEL_PANEL_HEIGHT = SCREEN_HEIGHT * 0.35;
+const MODEL_CARD_WIDTH = 160;
+const MODEL_CARD_HEIGHT = 290;
+const MODEL_PREVIEW_SIZE = 50;
 const DEFAULT_MODEL_SCALE = 0.7;
 
 // Add this after the screen dimensions
-const PRELOAD_ADJACENT_MODELS = 2; // Number of models to preload on each side
+
 
 // Helper function to get icon based on category
 const getCategoryIcon = (category: string): string => {
@@ -93,7 +92,7 @@ const ModelCard = React.memo(({ title, iconName, isSelected, onPress }: ModelCar
   }, [isSelected]);
 
   const arModels = useSelector((state: RootState) => state.arModels.models);
-  const modelData = useMemo(() => 
+  const modelData = useMemo(() =>
     arModels.find(m => m.name === title),
     [arModels, title]
   );
@@ -101,14 +100,14 @@ const ModelCard = React.memo(({ title, iconName, isSelected, onPress }: ModelCar
   if (!modelData) return null;
 
   const categoryIcon = getCategoryIcon(modelData.category);
-  const gradientColors = isSelected 
+  const gradientColors = isSelected
     ? ['#8E2DE2', '#6A1B9A']
     : ['#FFFFFF', '#F8F8F8'];
 
   const renderPreviewContent = () => {
     if (modelData.previewImage && !imageError) {
       return (
-        <RNImage 
+        <RNImage
           source={{ uri: modelData.previewImage }}
           style={styles.modelPreviewImage}
           resizeMode="contain"
@@ -117,23 +116,23 @@ const ModelCard = React.memo(({ title, iconName, isSelected, onPress }: ModelCar
       );
     }
     return (
-      <MaterialCommunityIcons 
+      <MaterialCommunityIcons
         name={categoryIcon}
-        size={50} 
-        color={isSelected ? '#FFFFFF' : '#6A1B9A'} 
+        size={50}
+        color={isSelected ? '#FFFFFF' : '#6A1B9A'}
       />
     );
   };
 
   return (
-    <RNAnimated.View 
+    <RNAnimated.View
       style={[
         styles.modelCard,
         isSelected && styles.selectedModelCard,
         { transform: [{ scale: scaleAnim }] }
       ]}>
-      <TouchableOpacity 
-        onPress={onPress} 
+      <TouchableOpacity
+        onPress={onPress}
         activeOpacity={0.7}
         style={styles.modelCardTouchable}>
         <LinearGradient
@@ -153,12 +152,11 @@ const ModelCard = React.memo(({ title, iconName, isSelected, onPress }: ModelCar
             ]}>
               {modelData.name}
             </Text>
-
             <View style={styles.modelCategory}>
-              <MaterialCommunityIcons 
+              <MaterialCommunityIcons
                 name={categoryIcon}
-                size={16} 
-                color={isSelected ? '#FFD700' : '#6A1B9A'} 
+                size={16}
+                color={isSelected ? '#FFD700' : '#6A1B9A'}
               />
               <Text style={[
                 styles.categoryText,
@@ -170,11 +168,11 @@ const ModelCard = React.memo(({ title, iconName, isSelected, onPress }: ModelCar
 
             <View style={styles.modelComplexity}>
               {[...Array(getComplexityStars(modelData.complexity))].map((_, i) => (
-                <MaterialCommunityIcons 
+                <MaterialCommunityIcons
                   key={i}
-                  name="star" 
-                  size={14} 
-                  color={isSelected ? '#FFD700' : '#6A1B9A'} 
+                  name="star"
+                  size={14}
+                  color={isSelected ? '#FFD700' : '#6A1B9A'}
                   style={{ marginHorizontal: 1 }}
                 />
               ))}
@@ -198,15 +196,17 @@ const getComplexityStars = (complexity: string): number => {
   return complexityMap[complexity] || 3;
 };
 
-const LoadingView = React.memo(() => (
-  <View style={styles.loadingContainer}>
-    <ActivityIndicator size="large" color="#6A1B9A" />
-    <Text style={styles.loadingText}>Loading AR Experience...</Text>
+const LoadingOverlay = React.memo(({ message }: { message: string }) => (
+  <View style={styles.loadingOverlay}>
+    <View style={styles.loadingContent}>
+      <ActivityIndicator size="large" color="#6A1B9A" />
+      <Text style={styles.loadingOverlayText}>{message}</Text>
+    </View>
   </View>
 ));
 
 // Update the ModelTransition component
-const ModelTransition: React.FC<ModelTransitionProps> = React.memo(({ isVisible, model, style }) => {
+const ModelTransition: React.FC<ModelTransitionProps> = React.memo(({ isVisible, children }) => {
   const fadeAnim = React.useRef(new RNAnimated.Value(0)).current;
 
   React.useEffect(() => {
@@ -217,68 +217,66 @@ const ModelTransition: React.FC<ModelTransitionProps> = React.memo(({ isVisible,
     }).start();
   }, [isVisible, fadeAnim]);
 
+  if (!isVisible) return null;
+
   return (
-    <RNAnimated.View style={[style, { opacity: fadeAnim }]}>
-      {model}
+    <RNAnimated.View style={{ opacity: fadeAnim }}>
+      {children}
     </RNAnimated.View>
   );
 });
 
 // Update the ARScene component with better model positioning and scaling
-const ARScene = React.memo(({ model, scale = DEFAULT_MODEL_SCALE, rotation }: { model: string; scale?: number; rotation: [number, number, number] }) => {
-  const dispatch = useAppDispatch();
-  const [trackingState, setTrackingState] = useState<ViroTrackingStateConstants>(
-    ViroTrackingStateConstants.TRACKING_UNAVAILABLE
-  );
+const ARScene = React.memo(({ model, scale = DEFAULT_MODEL_SCALE, rotation }: { model: string; scale?: number; rotation?: [number, number, number] }) => {
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [modelLoaded, setModelLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [modelLoadAttempts, setModelLoadAttempts] = useState(0);
+  const [isModelVisible, setIsModelVisible] = useState(true);
+  const [sceneInitialized, setSceneInitialized] = useState(false);
+  const [initializationAttempts, setInitializationAttempts] = useState(0);
+  const MAX_LOAD_ATTEMPTS = 3;
+  const MAX_INIT_ATTEMPTS = 3;
+  const RETRY_DELAY = 2000;
+
   const arModels = useSelector((state: RootState) => state.arModels.models);
-  
-  // Default position for the 3D model
-  const defaultPosition: [number, number, number] = [0, 0, -2];
-  
-  const selectedModelData = useMemo(() => 
+  const selectedModelData = useMemo(() =>
     arModels.find(m => m.name === model),
     [arModels, model]
   );
 
   const modelScale = useMemo((): [number, number, number] => {
+    if (selectedModelData?.scale) {
+      const { x, y, z } = selectedModelData.scale;
+      return [x, y, z];
+    }
     const baseScale = scale || DEFAULT_MODEL_SCALE;
     return [baseScale, baseScale, baseScale];
-  }, [scale]);
+  }, [selectedModelData, scale]);
+
+  const modelRotation = useMemo((): [number, number, number] => {
+    if (selectedModelData?.rotation) {
+      const { x, y, z } = selectedModelData.rotation;
+      return [x, y, z];
+    }
+    return rotation || [0, 0, 0];
+  }, [selectedModelData, rotation]);
 
   const modelType = useMemo(() => {
-    const fileExt = selectedModelData?.modelFile?.split('.').pop()?.toUpperCase() || 'GLB';
+    if (!selectedModelData?.modelFile) return 'GLB';
+    const fileExt = selectedModelData.modelFile.split('.').pop()?.toUpperCase();
     return fileExt === 'GLTF' ? 'GLTF' : 'GLB';
   }, [selectedModelData]);
 
-  // Improved URL formatting utility
-  const formatModelUrl = useCallback((modelFile: string) => {
-    if (!modelFile) {
-      console.error('No model file provided');
-      return null;
-    }
-
+  const validateModelUrl = useCallback((url: string): boolean => {
     try {
-      // If it's already a full URL, return it
-      if (modelFile.startsWith('http')) {
-        return modelFile;
-      }
-
-      // Clean up the model path
-      const cleanPath = modelFile
-        .replace(/^\/+/, '')
-        .replace(/^(uploads\/models\/)+/, '')
-        .replace(/\/+/g, '/');
-
-      // Use the server URL
-      const finalUrl = `http://192.168.8.192:5000/uploads/models/${cleanPath}`;
-      console.log('Loading 3D model from:', finalUrl);
-      return finalUrl;
-    } catch (error) {
-      console.error('Error formatting model URL:', error);
-      return null;
+      if (!url) return false;
+      if (!url.startsWith('http')) return false;
+      new URL(url);
+      return true;
+    } catch (e) {
+      console.error('Invalid model URL:', e);
+      return false;
     }
   }, []);
 
@@ -287,47 +285,192 @@ const ARScene = React.memo(({ model, scale = DEFAULT_MODEL_SCALE, rotation }: { 
       console.error('No model file in selected data');
       return null;
     }
-    const url = formatModelUrl(selectedModelData.modelFile);
-    console.log('Final model URL:', url);
-    return url;
-  }, [selectedModelData, formatModelUrl]);
 
-  // Reset loading state when model changes
-  useEffect(() => {
-    console.log('Model changed to:', model);
-    setIsLoading(true);
-    setModelLoaded(false);
-    setError(null);
-  }, [model]);
+    try {
+      const modelFile = selectedModelData.modelFile;
+      // Check if it's already a valid URL
+      if (validateModelUrl(modelFile)) {
+        return modelFile;
+      }
 
-  const onInitialized = useCallback((state: ViroTrackingStateConstants, reason: ViroTrackingReason) => {
-    console.log('AR Tracking State:', state, 'Reason:', reason);
-    setTrackingState(state);
+
+      // Clean and construct the URL
+      const cleanPath = modelFile
+        .replace(/^\/+/, '')
+        .replace(/^(uploads\/models\/)+/, '')
+        .replace(/\/+/g, '/');
+
+      const fullUrl = `${API_CONFIG.BASE_URL}/uploads/models/${cleanPath}`;
+
+      if (!validateModelUrl(fullUrl)) {
+        console.error('Invalid URL constructed:', fullUrl);
+        return null;
+      }
+
+      return fullUrl;
+    } catch (error) {
+      console.error('Error formatting model URL:', error);
+      return null;
+    }
+  }, [selectedModelData, validateModelUrl]);
+
+  const onInitialized = useCallback((state: any) => {
+    console.log('AR Scene initialization:', { state });
+
     if (state === ViroTrackingStateConstants.TRACKING_NORMAL) {
       setIsLoading(false);
+      setSceneInitialized(true);
+      setError(null);
+      setInitializationAttempts(0);
+    } else {
+      setInitializationAttempts(prev => {
+        const newAttempts = prev + 1;
+        if (newAttempts >= MAX_INIT_ATTEMPTS) {
+          setError('AR tracking unavailable. Please ensure good lighting and a clear surface.');
+          setIsLoading(false);
+        } else {
+          setTimeout(() => {
+            setSceneInitialized(false);
+            setIsLoading(true);
+            setError(null);
+          }, RETRY_DELAY);
+        }
+        return newAttempts;
+      });
     }
   }, []);
 
-  // Loading state component with progress indicator
-  const LoadingState = () => (
-    <ViroNode position={defaultPosition} scale={[1, 1, 1]}>
-      <ViroText
-        text={`Loading ${selectedModelData?.name || '3D Model'}...`}
-        scale={[0.5, 0.5, 0.5]}
-        position={[0, 0.5, 0]}
-        style={{
-          fontFamily: 'Arial',
-          fontSize: 24,
-          color: '#FFFFFF',
-          textAlignVertical: 'center',
-          textAlign: 'center',
-        }}
-        width={2}
-        height={0.5}
-      />
-    </ViroNode>
-  );
+  const handleError = useCallback((event: any) => {
+    const errorMessage = event?.nativeEvent?.error || 'Failed to load model';
+    console.error('3D model load error:', errorMessage);
 
+    setModelLoadAttempts(prev => {
+      const newAttempts = prev + 1;
+      if (newAttempts >= MAX_LOAD_ATTEMPTS) {
+        setError(`Unable to load 3D model: ${errorMessage}`);
+        setIsLoading(false);
+        setIsModelVisible(false);
+        Alert.alert(
+          'Model Load Error',
+          'Failed to load the 3D model. Please try another model or check your internet connection.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        // Retry loading after a delay
+        setTimeout(() => {
+          console.log(`Retrying model load (attempt ${newAttempts + 1}/${MAX_LOAD_ATTEMPTS})...`);
+          setIsLoading(true);
+          setError(null);
+          setIsModelVisible(false);
+        }, RETRY_DELAY);
+      }
+      return newAttempts;
+    });
+
+    setModelLoaded(false);
+  }, []);
+
+  const handleLoadStart = useCallback(() => {
+    if (!modelUrl) {
+      setError('Model file not available');
+      setIsLoading(false);
+      Alert.alert(
+        'Model Error',
+        'The 3D model file is not available. Please try another model.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    if (!validateModelUrl(modelUrl)) {
+      setError('Invalid model URL');
+      setIsLoading(false);
+      Alert.alert(
+        'Model Error',
+        'The model URL is invalid. Please try another model.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    console.log('Starting to load 3D model:', modelUrl);
+    setIsLoading(true);
+    setModelLoaded(false);
+    setError(null);
+    setIsModelVisible(false);
+  }, [modelUrl, validateModelUrl]);
+
+  const handleLoadEnd = useCallback(() => {
+    console.log('3D model loaded successfully:', modelUrl);
+    setIsLoading(false);
+    setModelLoaded(true);
+    setError(null);
+    setModelLoadAttempts(0);
+    // Delay showing the model slightly to ensure smooth transition
+    setTimeout(() => setIsModelVisible(true), 100);
+  }, [modelUrl]);
+
+  // Add a useEffect to validate the model URL
+  useEffect(() => {
+    if (modelUrl) {
+      setIsLoading(true);
+      setModelLoaded(false);
+      setError(null);
+
+      // Validate the URL (you could add more validation here)
+      if (!modelUrl.startsWith('http')) {
+        setError('Invalid model URL format');
+        setIsLoading(false);
+        return;
+      }
+
+      // Optional: You could add a fetch request here to check if the URL is accessible
+      fetch(modelUrl, { method: 'HEAD' })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`Model URL returned status ${response.status}`);
+          }
+          // URL is valid and accessible, continue loading in Viro3DObject
+        })
+        .catch(err => {
+          setError(`Could not access model: ${err.message}`);
+          setIsLoading(false);
+        });
+    }
+  }, [modelUrl]);
+
+  // Show error or loading state if model URL is not available
+  if (!modelUrl || !validateModelUrl(modelUrl)) {
+    return (
+      <ViroARScene onTrackingUpdated={onInitialized}>
+        <ViroNode position={[0, 0, -2]}>
+          <ViroText
+            text={error || "Model not available"}
+            scale={[0.5, 0.5, 0.5]}
+            style={{
+              fontFamily: 'Arial',
+              fontSize: 24,
+              color: '#FF0000',
+              textAlignVertical: 'center',
+              textAlign: 'center',
+            }}
+          />
+        </ViroNode>
+      </ViroARScene>
+    );
+  }
+
+  useEffect(() => {
+    console.log("Model rendering state:", {
+      modelUrl,
+      modelType,
+      isModelVisible,
+      modelLoaded,
+      isLoading,
+      error,
+      sceneInitialized
+    });
+  }, [modelUrl, modelType, isModelVisible, modelLoaded, isLoading, error, sceneInitialized]);
   return (
     <ViroARScene onTrackingUpdated={onInitialized}>
       <ViroAmbientLight color="#FFFFFF" intensity={200} />
@@ -340,68 +483,92 @@ const ARScene = React.memo(({ model, scale = DEFAULT_MODEL_SCALE, rotation }: { 
         intensity={250}
         castsShadow={true}
       />
-      
-      {!error && modelUrl && (
-        <ViroNode 
-          position={defaultPosition}
-          dragType="FixedToWorld"
-          onDrag={() => {}}
-          visible={true}>
-          <Viro3DObject
-            source={{ 
-              uri: modelUrl,
-              headers: {
-                'Accept': '*/*',
-                'Content-Type': 'application/octet-stream',
-                'Access-Control-Allow-Origin': '*',
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache'
-              }
-            }}
-            resources={[]}
-            scale={modelScale}
-            position={[0, 0, 0]}
-            rotation={rotation}
-            type={modelType}
-            animation={{name: "rotate", run: true, loop: true}}
-            onLoadStart={() => {
-              console.log('Starting to load 3D model:', modelUrl);
-              setIsLoading(true);
-              setModelLoaded(false);
-              setError(null);
-            }}
-            onLoadEnd={() => {
-              console.log('3D model loaded successfully:', modelUrl);
-              setIsLoading(false);
-              setModelLoaded(true);
-            }}
-            onError={(event: any) => {
-              const errorMessage = event?.nativeEvent?.error || 'Unknown error';
-              console.error('3D model load error:', errorMessage, 'URL:', modelUrl);
-              setError(`Failed to load model: ${errorMessage}`);
-              setIsLoading(false);
-              setModelLoaded(false);
-            }}
-          />
+
+      {sceneInitialized && !error && (
+        <ViroNode position={[0, 0, -2]}>
+          {isLoading && (
+            <ViroText
+              text="Loading 3D model..."
+              width={2}
+              height={2}
+              position={[0, 0, 0]}
+              style={{
+                fontFamily: 'Arial',
+                fontSize: 20,
+                color: '#FFFFFF',
+                textAlignVertical: 'center',
+                textAlign: 'center'
+              }}
+            />
+          )}
+
+
+
+          {modelUrl && (
+            <Viro3DObject
+              source={{ uri: modelUrl }}
+              type={modelType}
+              scale={modelScale}
+              position={[0, 0, 0]} // Make sure position is explicitly set
+              rotation={modelRotation}
+              highAccuracyEvents={true} // Add this for better event handling
+              onLoadStart={() => {
+                console.log("STARTING TO LOAD MODEL:", modelUrl);
+                setIsLoading(true);
+                setModelLoaded(false);
+                setError(null);
+              }}
+              onLoadEnd={() => {
+                console.log("MODEL LOADED SUCCESSFULLY:", modelUrl);
+                setIsLoading(false);
+                setModelLoaded(true);
+                setError(null);
+                setIsModelVisible(true);
+              }}
+              onError={(event) => {
+                const errorMsg = event?.nativeEvent?.error || "Unknown error";
+                console.error("MODEL LOAD ERROR:", errorMsg, "URL:", modelUrl);
+                setError(`Failed to load: ${event.nativeEvent.error}`);
+                setIsLoading(false);
+              }}
+              lightReceivingBitMask={2}
+              shadowCastingBitMask={1}
+              transformBehaviors={['billboardY']}
+            />
+          )}
+
+          {error && (
+            <ViroText
+              text={`Error: ${error}\nPlease try again.`}
+              width={2}
+              height={2}
+              position={[0, 0, 0]}
+              style={{
+                fontFamily: 'Arial',
+                fontSize: 18,
+                color: '#FF0000',
+                textAlignVertical: 'center',
+                textAlign: 'center'
+              }}
+            />
+          )}
         </ViroNode>
       )}
 
-      {isLoading && <LoadingState />}
-      {error && (
+
+
+      {(isLoading || error) && (
         <ViroNode position={[0, 0, -2]}>
           <ViroText
-            text={error}
-            scale={[0.4, 0.4, 0.4]}
-            position={[0, 0, 0]}
+            text={error || "Initializing AR..."}
+            scale={[0.5, 0.5, 0.5]}
             style={{
               fontFamily: 'Arial',
-              fontSize: 20,
-              color: '#FF0000',
+              fontSize: 24,
+              color: error ? '#FF0000' : '#FFFFFF',
               textAlignVertical: 'center',
               textAlign: 'center',
             }}
-            width={2}
-            height={0.5}
           />
         </ViroNode>
       )}
@@ -411,7 +578,7 @@ const ARScene = React.memo(({ model, scale = DEFAULT_MODEL_SCALE, rotation }: { 
 
 const InfoModal = React.memo(({ isVisible, model, onClose }: { isVisible: boolean; model: string; onClose: () => void }) => {
   const arModels = useSelector((state: RootState) => state.arModels.models);
-  const selectedModel = useMemo(() => 
+  const selectedModel = useMemo(() =>
     arModels.find(m => m.name === model),
     [arModels, model]
   );
@@ -424,10 +591,10 @@ const InfoModal = React.memo(({ isVisible, model, onClose }: { isVisible: boolea
         <LinearGradient
           colors={['#FFFFFF', '#F8F8F8']}
           style={styles.modalContent}>
-          <MaterialCommunityIcons 
-            name="cube-outline" 
-            size={48} 
-            color="#6A1B9A" 
+          <MaterialCommunityIcons
+            name="cube-outline"
+            size={48}
+            color="#6A1B9A"
             style={styles.modalIcon}
           />
           <Text style={styles.modalTitle}>{selectedModel.name}</Text>
@@ -477,72 +644,135 @@ const ARLearnScreen: React.FC = () => {
   const dispatch = useAppDispatch();
   const [selectedModel, setLocalSelectedModel] = useState<string | null>(null);
   const { models = [], status, error } = useSelector((state: RootState) => state.arModels);
-  const isLoading = status === 'loading';
+  const [isModelLoading, setIsModelLoading] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
+  const [isARSceneVisible, setIsARSceneVisible] = useState(false);
+  const [isModelChanging, setIsModelChanging] = useState(false);
+  const [isARSceneLoading, setIsARSceneLoading] = useState(true);
   const fadeAnim = useRef(new RNAnimated.Value(1)).current;
+  const modelChangeTimeoutRef = useRef<NodeJS.Timeout>();
+  const isLoading = status === 'loading';
 
-  // Load models when component mounts
+  // Cleanup function for model change timeout
   useEffect(() => {
-    dispatch(fetchARModels());
+    return () => {
+      if (modelChangeTimeoutRef.current) {
+        clearTimeout(modelChangeTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Fetch models on mount with error handling
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        setModelError(null);
+        await dispatch(fetchARModels()).unwrap();
+
+      } catch (error: any) {
+        console.error('Error fetching AR models:', error);
+        setModelError(error.message || 'Failed to load models. Please try again.');
+      }
+    };
+    fetchModels();
   }, [dispatch]);
 
-  // Enhanced model selection handler with animation
-  const handleModelSelect = useCallback((modelName: string) => {
-    console.log('Selecting model:', modelName);
-    if (modelName === selectedModel) return;
+  const handleModelSelect = useCallback(async (modelName: string) => {
+    try {
+      // Prevent selection during transitions
+      if (isModelChanging || isModelLoading) return;
 
-    // Find the selected model data
-    const modelData = models.find(m => m.name === modelName);
-    if (!modelData) {
-      console.error('Selected model not found:', modelName);
-      return;
-    }
+      const modelData = models.find(m => m.name === modelName);
+      if (!modelData) {
+        setModelError('Model data not found');
+        return;
+      }
 
-    console.log('Selected model data:', modelData);
+      // Start transition
+      setIsModelChanging(true);
+      setModelError(null);
 
-    // Fade out current model
-    RNAnimated.timing(fadeAnim, {
-      toValue: 0,
-      duration: 150,
-      useNativeDriver: true,
-    }).start(() => {
-      setLocalSelectedModel(modelName);
-      dispatch(setSelectedModel(modelName));
-      
-      // Fade in new model
+      // Fade out current model
       RNAnimated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 150,
+        toValue: 0,
+        duration: 200,
         useNativeDriver: true,
-      }).start();
-    });
-  }, [dispatch, selectedModel, fadeAnim, models]);
+      }).start(async () => {
+        try {
+          setIsARSceneVisible(false);
+          setLocalSelectedModel(modelName);
 
-  // Initialize first model when models are loaded
-  useEffect(() => {
-    if (models.length > 0 && !selectedModel) {
-      const firstModel = models[0];
-      console.log('Initializing with first model:', firstModel.name);
-      handleModelSelect(firstModel.name);
+          // Use the regular action instead of thunk
+          dispatch(setSelectedModel(modelName));
+
+          // Clear any existing timeout
+          if (modelChangeTimeoutRef.current) {
+            clearTimeout(modelChangeTimeoutRef.current);
+          }
+
+          // Set a new timeout for the fade-in animation
+          modelChangeTimeoutRef.current = setTimeout(() => {
+            setIsARSceneVisible(true);
+            RNAnimated.timing(fadeAnim, {
+              toValue: 1,
+              duration: 200,
+              useNativeDriver: true,
+            }).start(() => {
+              setIsModelChanging(false);
+            });
+          }, 500); // Wait for 500ms before showing new model
+
+        } catch (error: any) {
+          console.error('Error setting selected model:', error);
+          setModelError(error.message || 'Failed to select model');
+          setLocalSelectedModel(null);
+          setIsModelChanging(false);
+        }
+      });
+    } catch (error: any) {
+      console.error('Error in handleModelSelect:', error);
+      setModelError('An unexpected error occurred');
+      setIsModelChanging(false);
     }
-  }, [models, selectedModel, handleModelSelect]);
 
-  const handleRetry = useCallback(() => {
-    dispatch(fetchARModels());
-  }, [dispatch]);
+  }, [dispatch, models, isModelChanging, isModelLoading, fadeAnim]);
 
-  const renderModelSelectionPanel = () => (
-    <View style={[styles.modelSelectionPanel, selectedModel && styles.collapsedPanel]}>
+  // Initialize with first valid model
+  useEffect(() => {
+    if (models.length > 0 && !selectedModel && !isModelLoading) {
+      const validModel = models.find(model => {
+
+        return model && model.modelFile && typeof model.name === 'string';
+      });
+      if (validModel) {
+        handleModelSelect(validModel.name);
+      }
+    }
+  }, [models, selectedModel, handleModelSelect, isModelLoading]);
+
+  // Handle AR scene loading state
+  useEffect(() => {
+    if (selectedModel && isARSceneVisible) {
+      setIsARSceneLoading(true);
+      const timer = setTimeout(() => {
+        setIsARSceneLoading(false);
+      }, 1500);
+
+      return () => {
+        clearTimeout(timer);
+      };
+    }
+  }, [selectedModel, isARSceneVisible]);
+
+  // Update the renderModelSelectionPanel to show model errors
+  const renderModelSelectionPanel = useMemo(() => (
+    <View style={styles.modelSelectionPanel}>
       <LinearGradient
         colors={['#8E2DE2', '#6A1B9A']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={styles.modelSelectionHeader}>
-        <Text style={styles.modelSelectionTitle}>
-          {selectedModel ? 'Current Model' : 'Choose Your 3D Model'}
-        </Text>
-        {!selectedModel && (
-          <Text style={styles.modelSelectionSubtitle}>Explore and learn in AR!</Text>
-        )}
+        <Text style={styles.modelSelectionTitle}>3D Models</Text>
       </LinearGradient>
 
       {isLoading ? (
@@ -550,13 +780,17 @@ const ARLearnScreen: React.FC = () => {
           <ActivityIndicator size="large" color="#6A1B9A" />
           <Text style={styles.loadingText}>Loading 3D Models...</Text>
         </View>
-      ) : error ? (
+      ) : error || modelError ? (
         <View style={styles.errorContainer}>
           <MaterialCommunityIcons name="alert-circle" size={40} color="#FF6B6B" />
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity 
+          <Text style={styles.errorText}>{modelError || error}</Text>
+          <TouchableOpacity
             style={styles.retryButton}
-            onPress={handleRetry}>
+            onPress={() => {
+              setModelError(null);
+              setIsModelLoading(true);
+              handleModelSelect(selectedModel || '');
+            }}>
             <Text style={styles.retryButtonText}>Try Again</Text>
           </TouchableOpacity>
         </View>
@@ -564,14 +798,10 @@ const ARLearnScreen: React.FC = () => {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.modelCardsContainer,
-            selectedModel && styles.collapsedModelCards
-          ]}
+          contentContainerStyle={styles.modelCardsContainer}
           decelerationRate="fast"
           snapToInterval={MODEL_CARD_WIDTH + 12}
-          snapToAlignment="center"
-          pagingEnabled>
+          snapToAlignment="center">
           {models.map((model) => (
             <ModelCard
               key={model._id}
@@ -586,43 +816,54 @@ const ARLearnScreen: React.FC = () => {
         <View style={styles.errorContainer}>
           <MaterialCommunityIcons name="cube-outline" size={40} color="#6A1B9A" />
           <Text style={styles.errorText}>No models available</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.retryButton}
-            onPress={handleRetry}>
+            onPress={() => {
+              setModelError(null);
+              setIsModelLoading(true);
+              handleModelSelect(selectedModel || '');
+            }}>
             <Text style={styles.retryButtonText}>Refresh</Text>
           </TouchableOpacity>
         </View>
       )}
     </View>
-  );
+  ), [selectedModel, isLoading, error, modelError, models, handleModelSelect]);
 
   return (
     <ErrorBoundary>
       <SafeAreaView style={styles.container}>
         <View style={styles.arContainer}>
-          {selectedModel ? (
-            <ViroARSceneNavigator
-              key={selectedModel}
-              autofocus={true}
-              initialScene={{
-                scene: () => (
-                  <ARScene 
-                    model={selectedModel} 
-                    scale={DEFAULT_MODEL_SCALE} 
-                    rotation={[0, 0, 0]}
-                  />
-                ),
-              }}
-              style={styles.arView}
-            />
+          {selectedModel && isARSceneVisible ? (
+            <RNAnimated.View style={[styles.modelContainer, { opacity: fadeAnim }]}>
+              <ViroARSceneNavigator
+                key={selectedModel}
+                autofocus={true}
+                initialScene={{
+                  scene: () => (
+                    <ARScene
+                      model={selectedModel}
+                      scale={DEFAULT_MODEL_SCALE}
+                      rotation={[0, 0, 0]}
+                    />
+                  ),
+                }}
+                style={styles.arView}
+              />
+              {isARSceneLoading && (
+                <LoadingOverlay message="Loading AR Experience..." />
+              )}
+            </RNAnimated.View>
           ) : (
             <View style={styles.placeholderContainer}>
               <MaterialCommunityIcons name="cube-scan" size={64} color="#6A1B9A" />
-              <Text style={styles.placeholderText}>Select a model to start AR experience</Text>
+              <Text style={styles.placeholderText}>
+                {modelError || "Select a model to start AR experience"}
+              </Text>
             </View>
           )}
         </View>
-        {renderModelSelectionPanel()}
+        {renderModelSelectionPanel}
       </SafeAreaView>
     </ErrorBoundary>
   );
@@ -706,46 +947,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginBottom: 4,
   },
-  modelSelectionSubtitle: {
-    fontSize: 14,
-    color: '#E0E0E0',
-  },
   modelCardsContainer: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    gap: 12,
-    flexGrow: 1,
+    paddingVertical: 16,
+    gap: 20,
   },
   loadingContainer: {
     padding: 24,
     alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#666',
-  },
-  errorContainer: {
-    padding: 24,
-    alignItems: 'center',
-  },
-  errorText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#FF6B6B',
-    textAlign: 'center',
-  },
-  retryButton: {
-    marginTop: 16,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    backgroundColor: '#6A1B9A',
-    borderRadius: 20,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: 'bold',
   },
   modalContainer: {
     flex: 1,
@@ -847,7 +1056,7 @@ const styles = StyleSheet.create({
   modelCard: {
     width: MODEL_CARD_WIDTH,
     height: MODEL_CARD_HEIGHT,
-    marginRight: 12,
+    marginRight: 16,
     borderRadius: 16,
     backgroundColor: '#FFF',
     shadowColor: '#000',
@@ -867,8 +1076,9 @@ const styles = StyleSheet.create({
   },
   modelCardGradient: {
     flex: 1,
-    padding: 12,
+    padding: 16,
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
   modelImageContainer: {
     width: MODEL_PREVIEW_SIZE,
@@ -877,7 +1087,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   selectedModelImageContainer: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
@@ -892,12 +1102,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modelTitle: {
-    fontSize: 14,
+    fontSize: 18,
     fontWeight: 'bold',
     textAlign: 'center',
     color: '#333',
-    marginBottom: 4,
-    paddingHorizontal: 4,
+    marginBottom: 8,
+    paddingHorizontal: 8,
+    lineHeight: 22,
   },
   selectedModelTitle: {
     color: '#FFFFFF',
@@ -908,8 +1119,9 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   categoryText: {
-    fontSize: 12,
+    fontSize: 16,
     color: '#666',
+    marginLeft: 6,
   },
   selectedCategoryText: {
     color: '#FFFFFF',
@@ -917,13 +1129,6 @@ const styles = StyleSheet.create({
   modelComplexity: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  collapsedPanel: {
-    height: MODEL_PANEL_HEIGHT * 0.6,
-  },
-  collapsedModelCards: {
-    paddingVertical: 4,
-    gap: 8,
   },
   placeholderContainer: {
     flex: 1,
@@ -938,12 +1143,102 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   modelContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  loadingOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
   },
+  loadingContent: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    padding: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    maxWidth: '80%',
+  },
+  loadingOverlayText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#6A1B9A',
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  progressBar: {
+    marginTop: 10,
+  },
+  errorContainer: {
+    position: 'absolute',
+    top: '40%',
+    left: 20,
+    right: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 20,
+    alignItems: 'center',
+    zIndex: 1000,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+      },
+      android: {
+        elevation: 5,
+      },
+    }),
+  },
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    color: '#F44336',
+  },
+  errorMessage: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 20,
+    color: '#333333',
+  },
+  retryButton: {
+    backgroundColor: '#6A1B9A',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 5,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  trackingText: {
+    fontFamily: 'Arial',
+    fontSize: 18,
+    color: '#FFFFFF',
+    textAlignVertical: 'center',
+    textAlign: 'center',
+  },
+  loadingText: {
+    fontFamily: 'Arial',
+    fontSize: 18,
+    color: '#FFFFFF',
+    textAlignVertical: 'center',
+    textAlign: 'center',
+  },
+  errorText: {
+    fontFamily: 'Arial',
+    fontSize: 18,
+    color: '#FF0000',
+    textAlignVertical: 'center',
+    textAlign: 'center',
+  }
 });
 
 ViroAnimations.registerAnimations({
