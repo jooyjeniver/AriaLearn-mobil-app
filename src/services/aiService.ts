@@ -1,4 +1,5 @@
-import api, { API_CONFIG } from './api';
+import api from './api';
+import { API_CONFIG } from '../config/api';
 
 export interface EmotionAnalysisInput {
   text?: string;

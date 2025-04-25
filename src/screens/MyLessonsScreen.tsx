@@ -18,26 +18,26 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import type { Lesson, Subject, SubjectType, Difficulty } from '../types/lessons';
-import type { RootTabParamList, SubjectStackParamList } from '../types/navigation';
+import type { RootTabParamList, LessonsStackParamList } from '../types/navigation';
 import { useToast } from '../context/ToastContext';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { fetchModules, selectModules, selectModulesLoading, selectModulesError, Module } from '../store/slices/modulesSlice';
 
-type NavigationProp = CompositeNavigationProp<
-  BottomTabNavigationProp<RootTabParamList>,
-  NativeStackNavigationProp<SubjectStackParamList>
->;
+type NavigationProp = NativeStackNavigationProp<LessonsStackParamList, 'LessonsList'>;
 
-type RouteProps = RouteProp<RootTabParamList, 'My Lessons'>;
+type RouteProps = RouteProp<LessonsStackParamList, 'LessonsList'>;
+
+interface ExtendedModule extends Module {
+  name: string;
+}
 
 interface ModuleCardProps {
-  module: Module;
+  module: ExtendedModule;
   onPress: () => void;
 }
 
 const ModuleCard: React.FC<ModuleCardProps> = ({ module, onPress }) => {
   const scaleAnim = new Animated.Value(1);
-  const { showToast } = useToast();
 
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
@@ -54,7 +54,6 @@ const ModuleCard: React.FC<ModuleCardProps> = ({ module, onPress }) => {
   };
 
   const handleModulePress = () => {
-    showToast(`Opening ${module.title} module`, 'info');
     onPress();
   };
 
@@ -113,17 +112,17 @@ const MyLessonsScreen: React.FC = () => {
   const [selectedFilter, setSelectedFilter] = useState<string>('All');
   const { showToast } = useToast();
   const dispatch = useAppDispatch();
-  const modules = useAppSelector(selectModules);
+  const modules = useAppSelector(selectModules) as ExtendedModule[];
   const loading = useAppSelector(selectModulesLoading);
   const error = useAppSelector(selectModulesError);
 
-  // Extract unique titles from modules for filtering
+  // Extract unique module names for filtering
   const moduleTitles = React.useMemo(() => {
     const titles = new Set<string>();
     titles.add('All');
     modules.forEach(module => {
-      if (module.title) {
-        titles.add(module.title);
+      if (module.name) {
+        titles.add(module.name);
       }
     });
     return Array.from(titles);
@@ -147,12 +146,39 @@ const MyLessonsScreen: React.FC = () => {
     }
   }, [route.params?.selectedFilter]);
 
-  const handleModulePress = useCallback((module: Module) => {
+  const handleModulePress = useCallback((module: ExtendedModule) => {
     setSelectedModule(module._id);
     
-    // Navigate to ScienceScreen regardless of the module title
-    navigation.navigate('Science');
-    showToast(`Opening ${module.title} module`, 'info');
+    const moduleData = {
+      id: module._id,
+      name: module.title,
+      icon: module.icon,
+      description: module.description,
+      difficulty: 'Beginner' as const,
+      category: 'Science',
+      lessons: [],
+      color: module.color || '#6A1B9A'
+    };
+    
+    try {
+      // Try direct navigation first
+      navigation.navigate('Subject', { module: moduleData });
+    } catch (error) {
+      // If direct navigation fails, use getParent
+      try {
+        // @ts-ignore - Access parent navigator
+        navigation.getParent()?.navigate('Subject', { module: moduleData });
+      } catch (nestedError) {
+        // Last resort - use root navigator
+        // @ts-ignore - Access root navigator
+        navigation.getParent()?.getParent()?.navigate('Subject', { module: moduleData });
+        
+        // Log the issue for debugging
+        console.warn('Navigation fallback used for Subject screen');
+      }
+    }
+    
+    showToast(`Opening ${module.title}`, 'info');
   }, [navigation, showToast]);
 
   const handleFilterChange = (filter: string) => {
@@ -160,21 +186,38 @@ const MyLessonsScreen: React.FC = () => {
     showToast(`Filtering by ${filter}`, 'info');
   };
 
-  const filteredModules = selectedFilter === 'All' 
-    ? modules 
-    : modules.filter(module => {
-        // Check if module title matches
-        const moduleMatches = module.title.toLowerCase().includes(selectedFilter.toLowerCase());
-        
-        // Check if any lesson in the module matches
-        const lessonsMatch = module.lessons?.some(lesson => 
-          lesson.title.toLowerCase().includes(selectedFilter.toLowerCase())
-        );
+  const filteredModules = React.useMemo(() => {
+    if (selectedFilter === 'All') {
+      return modules;
+    }
 
-        return moduleMatches || lessonsMatch;
-      });
+    // Filter modules by name and keep their lessons
+    return modules.filter(module => 
+      module.name === selectedFilter
+    );
+  }, [modules, selectedFilter]);
 
-  console.log('Filtered Modules:', JSON.stringify(filteredModules, null, 2));
+  // Update the color mapping based on module names
+  const getFilterColor = (title: string) => {
+    switch(title) {
+      case 'All':
+        return '#6A1B9A';
+      case 'Time and History':
+        return '#FF9800';
+      case 'My Environment':
+        return '#4CAF50';
+      case 'Mathematics':
+        return '#2196F3';
+      case 'Language':
+        return '#9C27B0';
+      case 'Music':
+        return '#E91E63';
+      case 'Art':
+        return '#3F51B5';
+      default:
+        return '#6A1B9A';
+    }
+  };
 
   if (loading) {
     return (
@@ -198,7 +241,8 @@ const MyLessonsScreen: React.FC = () => {
           <TouchableOpacity 
             style={styles.recommendationCard}
             onPress={() => {
-              navigation.navigate('AR Learn');
+              // @ts-ignore - Navigate to root stack's AR Learn screen
+              navigation.getParent()?.getParent()?.navigate('AR Learn');
               showToast('Starting AR Space Adventure! 🚀', 'info');
             }}>
             <MaterialCommunityIcons name="rocket" size={32} color="#6A1B9A" />
@@ -213,7 +257,7 @@ const MyLessonsScreen: React.FC = () => {
         </View>
 
         <View style={styles.filterSection}>
-          <Text style={styles.sectionTitle}>Filter Modules</Text>
+          <Text style={styles.sectionTitle}>Filter by Subject</Text>
           <ScrollView 
             horizontal 
             showsHorizontalScrollIndicator={false}
@@ -224,20 +268,14 @@ const MyLessonsScreen: React.FC = () => {
                 title={title} 
                 isSelected={selectedFilter === title} 
                 onPress={() => handleFilterChange(title)}
-                color={title === 'All' ? '#6A1B9A' : 
-                       title === 'Science' ? '#4CAF50' : 
-                       title === 'Mathematics' ? '#2196F3' : 
-                       title === 'Language' ? '#9C27B0' : 
-                       title === 'Social Studies' ? '#FF9800' : 
-                       title === 'Music' ? '#E91E63' : 
-                       title === 'Art' ? '#3F51B5' : '#6A1B9A'}
+                color={getFilterColor(title)}
               />
             ))}
           </ScrollView>
         </View>
 
         <View style={styles.modulesSection}>
-          <Text style={styles.sectionTitle}>Available Modules</Text>
+          <Text style={styles.sectionTitle}>Available Lessons</Text>
           {filteredModules.length > 0 ? (
             filteredModules.map(module => 
               module.lessons.map(lesson => (
@@ -257,7 +295,7 @@ const MyLessonsScreen: React.FC = () => {
           ) : (
             <View style={styles.emptyStateContainer}>
               <MaterialCommunityIcons name="book-open-page-variant" size={48} color="#9E9E9E" />
-              <Text style={styles.emptyStateText}>No modules found for this filter</Text>
+              <Text style={styles.emptyStateText}>No lessons found for this subject</Text>
             </View>
           )}
         </View>

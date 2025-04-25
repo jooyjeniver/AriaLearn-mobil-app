@@ -54,7 +54,7 @@ export const fetchModules = createAsyncThunk(
   'modules/fetchModules',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await api.get('/modules');
+      const response = await api.get('/lessons');
       return response.data.data;
     } catch (error: any) {
       if (error.response) {

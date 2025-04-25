@@ -5,12 +5,11 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ActivityIndicator, View } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import HomeScreen from '../screens/HomeScreen';
-import MyLessonsScreen from '../screens/MyLessonsScreen';
-import SubjectScreenWrapper from '../screens/subjects/SubjectScreenWrapper';
 import ProgressScreen from '../screens/ProgressScreen';
 import GamesScreen from '../screens/GamesScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
 import AuthNavigator from './AuthNavigator';
+import LessonsNavigator from './LessonsNavigator';
 import type { RootTabParamList, SubjectStackParamList, RootStackParamList } from '../types/navigation';
 import { useAppSelector } from '../store/hooks';
 
@@ -43,54 +42,6 @@ const SubjectStack = () => (
       name="HomeTab" 
       component={HomeScreen}
       options={{ headerShown: false }}
-    />
-    <Stack.Screen 
-      name="Myself and My Family" 
-      component={SubjectScreenWrapper}
-      options={{
-        headerBackTitle: 'Back',
-        animation: 'slide_from_right',
-      }}
-    />
-    <Stack.Screen 
-      name="Our School and Community" 
-      component={SubjectScreenWrapper}
-      options={{
-        headerBackTitle: 'Back',
-        animation: 'slide_from_right',
-      }}
-    />
-    <Stack.Screen 
-      name="Good Habits and Citizenship" 
-      component={SubjectScreenWrapper}
-      options={{
-        headerBackTitle: 'Back',
-        animation: 'slide_from_right',
-      }}
-    />
-    <Stack.Screen 
-      name="My Environment" 
-      component={SubjectScreenWrapper}
-      options={{
-        headerBackTitle: 'Back',
-        animation: 'slide_from_right',
-      }}
-    />
-    <Stack.Screen 
-      name="Time and History" 
-      component={SubjectScreenWrapper}
-      options={{
-        headerBackTitle: 'Back',
-        animation: 'slide_from_right',
-      }}
-    />
-    <Stack.Screen 
-      name="Transport and Communication" 
-      component={SubjectScreenWrapper}
-      options={{
-        headerBackTitle: 'Back',
-        animation: 'slide_from_right',
-      }}
     />
     <Stack.Screen 
       name="UserProfile" 
@@ -140,7 +91,7 @@ const TabNavigator = () => (
       headerShown: false,
     })}>
     <Tab.Screen name="Home" component={SubjectStack} />
-    <Tab.Screen name="My Lessons" component={MyLessonsScreen} />
+    {/* <Tab.Screen name="My Lessons" component={LessonsNavigator} /> */}
     <Tab.Screen name="Progress" component={ProgressScreen} />
     <Tab.Screen name="Games" component={GamesScreen} />
   </Tab.Navigator>
@@ -151,12 +102,20 @@ const AppNavigator = () => {
 
   return (
     <NavigationContainer>
-      <RootStack.Navigator screenOptions={{ headerShown: false }}>
+      <RootStack.Navigator>
         {!token ? (
-          <RootStack.Screen name="Auth" component={AuthNavigator} />
+          <RootStack.Screen 
+            name="Auth" 
+            component={AuthNavigator}
+            options={{ headerShown: false }} 
+          />
         ) : (
           <>
-            <RootStack.Screen name="Main" component={TabNavigator} />
+            <RootStack.Screen 
+              name="Main" 
+              component={TabNavigator}
+              options={{ headerShown: false }} 
+            />
             <RootStack.Screen
               name="AR Learn"
               component={() => (
@@ -165,6 +124,7 @@ const AppNavigator = () => {
                 </Suspense>
               )}
               options={{
+                headerShown: false,
                 presentation: 'fullScreenModal',
                 animation: 'slide_from_bottom',
               }}
@@ -176,4 +136,4 @@ const AppNavigator = () => {
   );
 };
 
-export default AppNavigator; 
+export default AppNavigator;

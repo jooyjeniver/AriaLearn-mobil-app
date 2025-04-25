@@ -198,9 +198,6 @@ const SubjectScreenWrapper = () => {
   const handleLessonPress = (lessonId: string) => {
     // Handle lesson navigation here
     // For AR-enabled lessons, navigate to AR screen
-    if (lessonId === '1') {
-      navigation.navigate('AR Learn');
-    }
   };
 
   return (
