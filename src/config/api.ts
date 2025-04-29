@@ -25,6 +25,7 @@ export const API_CONFIG = {
     LESSONS: '/lessons',
     PROGRESS: '/progress',
     ACHIEVEMENTS: '/achievements',
+    QUIZZES: '/quizzes',
   },
   
   // API Timeouts (in milliseconds)

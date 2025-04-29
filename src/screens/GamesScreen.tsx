@@ -1,16 +1,25 @@
-import React, { useState, useCallback } from 'react';
+// src/screens/GamesScreen.tsx
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
+  ScrollView,
   SafeAreaView,
+  ActivityIndicator,
+  Alert,
   Animated,
   Platform,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useSelector } from 'react-redux';
+import { useAppDispatch } from '../store/hooks';
+import { answerQuestion, fetchQuizzes, nextQuestion, resetCurrentQuiz, selectQuiz } from '../store/slices/quizSlice';
+import { RootState } from '../store/store';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { MainStackParamList } from '../types/navigation';
 
 interface Achievement {
   id: string;
@@ -36,6 +45,8 @@ interface Game {
   color: string;
   bestScore?: number;
   timesPlayed: number;
+  isQuiz?: boolean;
+  quizData?: any;
 }
 
 const ACHIEVEMENTS: Achievement[] = [
@@ -185,7 +196,12 @@ const AchievementIcon: React.FC<{ achievement: Achievement }> = ({ achievement }
   </TouchableOpacity>
 );
 
-const GameCard: React.FC<{ game: Game }> = ({ game }) => {
+interface GameCardProps {
+  game: Game;
+  onPress: () => void;
+}
+
+const GameCard: React.FC<GameCardProps> = ({ game, onPress }) => {
   const [scaleAnim] = useState(new Animated.Value(1));
 
   const handlePressIn = () => {
@@ -208,6 +224,7 @@ const GameCard: React.FC<{ game: Game }> = ({ game }) => {
         style={styles.gameCard}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
+        onPress={onPress}
         activeOpacity={0.7}
       >
         <View style={[styles.gameImage, { backgroundColor: `${game.color}20` }]}>
@@ -254,9 +271,16 @@ const GameCard: React.FC<{ game: Game }> = ({ game }) => {
               <Text style={styles.pointsText}>+{game.points}</Text>
             </View>
           </View>
-          <TouchableOpacity style={[styles.playButton, { backgroundColor: game.color }]}>
-            <Text style={styles.playButtonText}>Play</Text>
-            <Text style={styles.playCount}>Played {game.timesPlayed}x</Text>
+          <TouchableOpacity 
+            style={[styles.playButton, { backgroundColor: game.color }]} 
+            onPress={onPress}
+          >
+            <Text style={styles.playButtonText}>{game.isQuiz ? 'Start Quiz' : 'Play'}</Text>
+            <Text style={styles.playCount}>
+              {game.isQuiz 
+                ? `${game.quizData?.questions?.length || 0} questions` 
+                : `Played ${game.timesPlayed}x`}
+            </Text>
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -265,9 +289,58 @@ const GameCard: React.FC<{ game: Game }> = ({ game }) => {
 };
 
 const GamesScreen: React.FC = () => {
+  const dispatch = useAppDispatch();
+  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
+  const { quizzes, loading, error } = useSelector((state: RootState) => state.quiz);
+  
+  // Fetch quizzes when component mounts
+  useEffect(() => {
+    dispatch(fetchQuizzes());
+  }, [dispatch]);
+  
+  // Calculate stats
   const totalPoints = ACHIEVEMENTS.reduce((sum, achievement) => 
     sum + (achievement.isUnlocked ? achievement.points : 0), 0);
   const totalGamesPlayed = GAMES.reduce((sum, game) => sum + game.timesPlayed, 0);
+
+  // Handle game selection
+  const handleGameSelect = (game: Game) => {
+    if (game.isQuiz && game.quizData) {
+      dispatch(selectQuiz(game.quizData));
+      navigation.navigate('QuizGameScreen');
+    } else {
+      // Handle regular game navigation here
+      Alert.alert('Coming Soon', 'This game will be available soon!');
+    }
+  };
+
+  // Convert API quizzes to the format your UI expects
+  const apiQuizGames = (quizzes || []).map(quiz => {
+    // Map API difficulty to UI difficulty
+    let difficulty: 'Easy' | 'Medium' | 'Hard';
+    if (quiz.difficulty === 'beginner') difficulty = 'Easy';
+    else if (quiz.difficulty === 'intermediate') difficulty = 'Medium';
+    else difficulty = 'Hard';
+    
+    return {
+      id: quiz._id || String(Math.random()),
+      title: quiz.title,
+      description: quiz.description || 'Test your knowledge with this quiz!',
+      difficulty,
+      rating: 4,
+      points: 15,
+      subject: quiz.topic || 'General',
+      icon: 'help-circle',
+      color: '#9C27B0',
+      bestScore: null,
+      timesPlayed: 0,
+      isQuiz: true,
+      quizData: quiz
+    };
+  });
+  
+  // Combine local games with API quizzes
+  const allGames = [...GAMES, ...apiQuizGames];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -316,8 +389,32 @@ const GamesScreen: React.FC = () => {
 
         <View style={styles.gamesSection}>
           <Text style={styles.sectionTitle}>Available Games</Text>
-          {GAMES.map(game => (
-            <GameCard key={game.id} game={game} />
+          
+          {loading && (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#6A1B9A" />
+              <Text style={styles.loadingText}>Loading games and quizzes...</Text>
+            </View>
+          )}
+          
+          {error && (
+            <View style={styles.errorContainer}>
+              <MaterialCommunityIcons name="alert-circle" size={40} color="#F44336" />
+              <Text style={styles.errorText}>Failed to load quizzes: {error}</Text>
+              <TouchableOpacity 
+                style={styles.retryButton}
+                onPress={() => dispatch(fetchQuizzes())}
+              >
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {apiQuizGames.map(game => (
+            <GameCard 
+              key={`${game.isQuiz ? 'quiz' : 'game'}-${game.id}`} 
+              game={game} 
+              onPress={() => handleGameSelect(game)}
+            />
           ))}
         </View>
       </ScrollView>
@@ -343,6 +440,20 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#333',
+  },
+  pointsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0E6FA',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+  },
+  pointsText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#6A1B9A',
   },
   statsContainer: {
     flexDirection: 'row',
@@ -377,20 +488,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     textAlign: 'center',
-  },
-  pointsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F0E6FA',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 4,
-  },
-  pointsText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#6A1B9A',
   },
   achievementsSection: {
     padding: 16,
@@ -559,6 +656,40 @@ const styles = StyleSheet.create({
     fontSize: 12,
     opacity: 0.8,
   },
+  // Error and loading states
+  loadingContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
+  },
+  errorContainer: {
+    padding: 20,
+    alignItems: 'center',
+    backgroundColor: '#FFEBEE',
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  errorText: {
+    marginTop: 10,
+    fontSize: 14,
+    color: '#D32F2F',
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#6A1B9A',
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  }
 });
 
-export default GamesScreen; 
+export default GamesScreen;
