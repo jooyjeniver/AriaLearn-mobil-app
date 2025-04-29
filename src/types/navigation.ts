@@ -45,6 +45,7 @@ export type AuthStackParamList = {
 export type MainStackParamList = {
   Home: undefined;
   Profile: undefined;
+  QuizGameScreen: undefined;
 };
 
 export interface User {

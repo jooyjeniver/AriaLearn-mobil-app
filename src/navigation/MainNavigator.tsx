@@ -10,6 +10,7 @@ import GamesScreen from '../screens/GamesScreen';
 import ProgressScreen from '../screens/ProgressScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
 import type { MainStackParamList } from '../types/navigation';
+import QuizGameScreen from '../screens/QuizGameScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator<MainStackParamList>();
@@ -59,6 +60,14 @@ const MainStack = () => (
       component={UserProfileScreen}
       options={{
         headerTitle: 'Profile',
+        headerBackTitle: 'Back',
+      }}
+    />
+    <Stack.Screen
+      name="QuizGameScreen"
+      component={QuizGameScreen}
+      options={{
+        headerTitle: 'Quiz',
         headerBackTitle: 'Back',
       }}
     />
