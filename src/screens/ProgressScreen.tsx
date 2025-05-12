@@ -1,9 +1,13 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useNavigation } from '@react-navigation/native';
+
+const { width } = Dimensions.get('window');
 
 const ProgressScreen = () => {
+  const navigation = useNavigation();
   const subjects = [
     { name: 'Math', progress: 75, color: '#4287f5' },
     { name: 'Science', progress: 60, color: '#2ecc71' },
@@ -18,6 +22,14 @@ const ProgressScreen = () => {
     }],
   };
 
+  // Mock emotion data for the last week
+  const emotionData = {
+    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    datasets: [{
+      data: [65, 70, 55, 80, 45, 60, 75], // Happiness percentages
+    }],
+  };
+
   return (
     <ScrollView style={styles.container}>
       {/* Header with Profile */}
@@ -29,6 +41,57 @@ const ProgressScreen = () => {
           color="#6A1B9A" 
           style={styles.profileIcon}
         />
+      </View>
+
+      {/* Emotional Journey Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Emotional Journey</Text>
+        <View style={styles.emotionSummary}>
+          <View style={styles.currentMood}>
+            <MaterialCommunityIcons name="emoticon-happy-outline" size={40} color="#4CAF50" />
+            <Text style={styles.moodLabel}>Current Mood</Text>
+          </View>
+          <View style={styles.averageMood}>
+            <Text style={styles.averageValue}>73%</Text>
+            <Text style={styles.averageLabel}>Average Happiness</Text>
+          </View>
+        </View>
+        
+        <LineChart
+          data={emotionData}
+          width={width - 50}
+          height={180}
+          chartConfig={{
+            backgroundColor: '#ffffff',
+            backgroundGradientFrom: '#ffffff',
+            backgroundGradientTo: '#ffffff',
+            decimalPlaces: 0,
+            color: (opacity = 1) => `rgba(76, 175, 80, ${opacity})`,
+            style: {
+              borderRadius: 16,
+            },
+          }}
+          bezier
+          style={styles.chart}
+        />
+        
+        <View style={styles.emotionActions}>
+          <TouchableOpacity 
+            style={styles.emotionButton}
+            onPress={() => navigation.navigate('EmotionCapture' as never)}
+          >
+            <MaterialCommunityIcons name="camera" size={24} color="#fff" />
+            <Text style={styles.emotionButtonText}>Capture Emotion</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.emotionButton, styles.historyButton]}
+            onPress={() => navigation.navigate('EmotionChart' as never)}
+          >
+            <MaterialCommunityIcons name="chart-line" size={24} color="#fff" />
+            <Text style={styles.emotionButtonText}>View History</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Subject Progress Section */}
@@ -55,7 +118,7 @@ const ProgressScreen = () => {
         <Text style={styles.sectionTitle}>Weekly Activity</Text>
         <LineChart
           data={weeklyData}
-          width={350}
+          width={width - 50}
           height={200}
           chartConfig={{
             backgroundColor: '#ffffff',
@@ -140,12 +203,66 @@ const styles = StyleSheet.create({
   chart: {
     marginVertical: 8,
     borderRadius: 16,
+    alignSelf: 'center',
   },
   totalHours: {
     textAlign: 'center',
     color: '#666',
     fontSize: 14,
     marginTop: 5,
+  },
+  emotionSummary: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    marginBottom: 15,
+    padding: 10,
+  },
+  currentMood: {
+    alignItems: 'center',
+  },
+  moodLabel: {
+    marginTop: 5,
+    fontSize: 14,
+    color: '#666',
+  },
+  averageMood: {
+    alignItems: 'center',
+  },
+  averageValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#4CAF50',
+  },
+  averageLabel: {
+    fontSize: 14,
+    color: '#666',
+  },
+  emotionActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 15,
+  },
+  emotionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#6A1B9A',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    flex: 1,
+    marginRight: 5,
+  },
+  historyButton: {
+    backgroundColor: '#4CAF50',
+    marginLeft: 5,
+    marginRight: 0,
+  },
+  emotionButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    marginLeft: 8,
   },
 });
 
