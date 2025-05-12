@@ -26,6 +26,8 @@ export const API_CONFIG = {
     PROGRESS: '/progress',
     ACHIEVEMENTS: '/achievements',
     QUIZZES: '/quizzes',
+    // AR Model Endpoints
+    ALL_AR_MODELS: '/armodels',
   },
   
   // API Timeouts (in milliseconds)

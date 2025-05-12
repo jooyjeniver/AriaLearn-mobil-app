@@ -11,6 +11,8 @@ import ProgressScreen from '../screens/ProgressScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
 import type { MainStackParamList } from '../types/navigation';
 import QuizGameScreen from '../screens/QuizGameScreen';
+import EmotionCapture from '../screens/EmotionCapture';
+import EmotionChart from '../screens/EmotionChart';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator<MainStackParamList>();
@@ -69,6 +71,20 @@ const MainStack = () => (
       options={{
         headerTitle: 'Quiz',
         headerBackTitle: 'Back',
+      }}
+    />
+    <Stack.Screen
+      name="EmotionCapture"
+      component={EmotionCapture}
+      options={{
+        headerShown: false,
+      }}
+    />
+    <Stack.Screen
+      name="EmotionChart"
+      component={EmotionChart}
+      options={{
+        headerShown: false,
       }}
     />
   </Stack.Navigator>

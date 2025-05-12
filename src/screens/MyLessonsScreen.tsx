@@ -174,8 +174,6 @@ const MyLessonsScreen: React.FC = () => {
         return moduleMatches || lessonsMatch;
       });
 
-  console.log('Filtered Modules:', JSON.stringify(filteredModules, null, 2));
-
   if (loading) {
     return (
       <View style={styles.loadingContainer}>

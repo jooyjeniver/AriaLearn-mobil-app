@@ -26,6 +26,24 @@ export type RootTabParamList = {
   Games: undefined;
 };
 
+export type LessonsStackParamList = {
+  LessonsList: {
+    selectedFilter?: string;
+  };
+  Subject: {
+    module: {
+      id: string;
+      name: string;
+      icon: string;
+      description: string;
+      difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
+      category: string;
+      lessons: string[];
+      color?: string;
+    }
+  };
+};
+
 export type RootStackParamList = {
   Welcome: undefined;
   Login: undefined;
@@ -46,6 +64,8 @@ export type MainStackParamList = {
   Home: undefined;
   Profile: undefined;
   QuizGameScreen: undefined;
+  EmotionCapture: undefined;
+  EmotionChart: undefined;
 };
 
 export interface User {
