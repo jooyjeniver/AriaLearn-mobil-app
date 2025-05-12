@@ -40,6 +40,44 @@ import { useAppDispatch } from '../store/hooks';
 import { API_CONFIG } from '../config/api';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 
+// Add a safe URL parsing function that doesn't use URL constructor
+const safeParseUrl = (url: string): { protocol: string, host: string, path: string } => {
+  try {
+    // Default values
+    const result = {
+      protocol: 'https',
+      host: 'example.com',
+      path: ''
+    };
+    
+    if (!url) return result;
+    
+    // Simple regex-based URL parsing
+    const protocolMatch = url.match(/^(https?):\/\//i);
+    if (protocolMatch) {
+      result.protocol = protocolMatch[1].toLowerCase();
+      // Remove protocol
+      url = url.substring(protocolMatch[0].length);
+    }
+    
+    // Split remaining URL by first slash to separate host and path
+    const parts = url.split('/');
+    if (parts.length > 0) {
+      result.host = parts[0];
+      result.path = '/' + parts.slice(1).join('/');
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Error safely parsing URL:', error);
+    return {
+      protocol: 'https',
+      host: 'example.com',
+      path: ''
+    };
+  }
+};
+
 // Use direct URLs instead of local assets that don't exist
 const DEBUG = {
   ENABLED: true,
@@ -169,13 +207,31 @@ const LoadingView = React.memo(() => (
   </View>
 ));
 
-// Get file extension from URL
+// Get file extension from URL safely without using URL constructor
 const getFileExtension = (url: string): string => {
-  const parts = url.split('.');
-  return parts[parts.length - 1].toLowerCase();
+  try {
+    if (!url) return 'glb'; // Default to glb if no URL
+    
+    // Remove query parameters and hash
+    const cleanUrl = url.split('?')[0].split('#')[0];
+    
+    // Split by path separator and get the last part (filename)
+    const parts = cleanUrl.split('/').pop()?.split('.') || [];
+    
+    // If there are parts and the last part exists, return it lowercase
+    if (parts.length > 1) {
+      return parts[parts.length - 1].toLowerCase();
+    }
+    
+    // Default to GLB if no extension found
+    return 'glb';
+  } catch (error) {
+    console.error('Error getting file extension:', error);
+    return 'glb';
+  }
 };
 
-// Fix the type for ARSceneProps
+// First, update the ARSceneProps interface to include support for pinch gestures
 interface ARSceneProps {
   model: ARModel;
   scale: number;
@@ -184,7 +240,7 @@ interface ARSceneProps {
   onTrackingUpdated?: (state: ViroTrackingStateConstants, reason?: ViroTrackingReason) => void;
 }
 
-// Optimized AR Scene component - simplified to fix all linter errors
+// Optimized AR Scene component with pinch-to-zoom and improved model switching
 const ARScene: React.FC<ARSceneProps> = ({ model, scale, rotation, onError, onTrackingUpdated }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [modelLoadAttempts, setModelLoadAttempts] = useState(0);
@@ -198,8 +254,39 @@ const ARScene: React.FC<ARSceneProps> = ({ model, scale, rotation, onError, onTr
     ViroTrackingStateConstants.TRACKING_UNAVAILABLE
   );
   const [debugInfo, setDebugInfo] = useState<string>('');
-  const isMounted = useRef(true);
   
+  // Refs for managing state
+  const isMounted = useRef(true);
+  const lastPinchDistance = useRef<number | null>(null);
+  const currentModelId = useRef<string | null>(null);
+  const modelChangeCount = useRef(0);
+  
+  // Reset state when model changes
+  useEffect(() => {
+    if (!model) return;
+    
+    // Check if model has changed
+    if (model._id !== currentModelId.current) {
+      modelChangeCount.current += 1;
+      console.log(`Model changed to: ${model.name} (${model._id}), change count: ${modelChangeCount.current}`);
+      
+      // Reset all state variables for the new model
+      setIsLoading(true);
+      setModelLoaded(false);
+      setErrorMessage(null);
+      setModelLoadAttempts(0);
+      
+      // Reset the UI state
+      setModelPosition([0, -0.1, -0.5]);
+      setModelScale([0.2, 0.2, 0.2]);
+      setModelRotation([0, 0, 0]);
+      
+      // Update current model ID
+      currentModelId.current = model._id;
+    }
+  }, [model]);
+  
+  // Cleanup effect
   useEffect(() => {
     return () => {
       isMounted.current = false;
@@ -208,6 +295,8 @@ const ARScene: React.FC<ARSceneProps> = ({ model, scale, rotation, onError, onTr
 
   // Handle tracking updates and forward to parent
   const handleTrackingUpdated = useCallback((state: ViroTrackingStateConstants, reason: ViroTrackingReason) => {
+    if (!isMounted.current) return;
+    
     setTrackingState(state);
     
     if (state === ViroTrackingStateConstants.TRACKING_NORMAL) {
@@ -221,60 +310,9 @@ const ARScene: React.FC<ARSceneProps> = ({ model, scale, rotation, onError, onTr
     }
   }, [onTrackingUpdated]);
 
-  // Create modelInfo
-  const modelInfo = useMemo(() => {
-    try {
-      if (model && model.modelFile) {
-        // Check if it's an API path
-        const isApiPath = model.modelFile.startsWith('/uploads');
-        
-        let sourceUrl;
-        if (isApiPath) {
-          sourceUrl = `${API_CONFIG.BASE_URL}${model.modelFile}`;
-        } else if (model.modelFile.startsWith('http')) {
-          sourceUrl = model.modelFile;
-        } else {
-          sourceUrl = "https://storage.googleapis.com/actlab-public/models/Box.glb";
-        }
-
-        // Determine file type and scale
-        let viroType: "OBJ" | "GLB" | "VRX" | "GLTF" = "GLB";
-        const fileType = model.fileType?.toLowerCase() || 'glb';
-        
-        if (fileType === 'obj') viroType = 'OBJ';
-        else if (fileType === 'glb') viroType = 'GLB';
-        else if (fileType === 'gltf') viroType = 'GLTF';
-        else if (fileType === 'vrx') viroType = 'VRX';
-        
-        let scale: [number, number, number] = [0.2, 0.2, 0.2];
-        if (model.scale) {
-          if (typeof model.scale === 'object' && 'x' in model.scale) {
-            scale = [model.scale.x, model.scale.y, model.scale.z];
-          }
-        }
-        
-        return {
-          source: { uri: sourceUrl },
-          type: viroType,
-          scale: scale
-        };
-      }
-      
-      // Fallback
-      return {
-        source: { uri: "https://storage.googleapis.com/actlab-public/models/Box.glb" },
-        type: 'GLB' as const,
-        scale: [0.15, 0.15, 0.15] as [number, number, number]
-      };
-    } catch (error) {
-      console.error('Error creating modelInfo:', error);
-      
-      return {
-        source: { uri: "https://storage.googleapis.com/actlab-public/models/Box.glb" },
-        type: 'GLB' as const,
-        scale: [0.15, 0.15, 0.15] as [number, number, number]
-      };
-    }
+  // Use our new safe model source creator
+  const safeModelSource = useMemo(() => {
+    return createSafeModelSource(model);
   }, [model]);
 
   // Track state
@@ -307,22 +345,26 @@ const ARScene: React.FC<ARSceneProps> = ({ model, scale, rotation, onError, onTr
     setDebugInfo(statusText);
   }, [isLoading, trackingStateText, errorMessage]);
 
-  // Handle model errors
+  // Update the handleModelError function to better handle errors
   const handleModelError = useCallback((error: any) => {
-    const errorMsg = error?.message || 'Unknown error occurred';
-    console.log(`Model error: ${errorMsg}`);
-    setErrorMessage(errorMsg);
-    setIsLoading(false);
-    
-    if (onError) {
-      onError({
-        message: errorMsg,
-        source: model?.modelFile,
-        critical: modelLoadAttempts > 1,
-      });
+    try {
+      const errorMsg = error?.message || 'Unknown error occurred';
+      console.log(`Model error: ${errorMsg}`);
+      setErrorMessage(errorMsg);
+      setIsLoading(false);
+      
+      if (onError) {
+        onError({
+          message: errorMsg,
+          source: model?.modelFile,
+          critical: modelLoadAttempts > 1,
+        });
+      }
+      
+      setModelLoadAttempts(prev => prev + 1);
+    } catch (handlerError) {
+      console.error("Error in error handler:", handlerError);
     }
-    
-    setModelLoadAttempts(prev => prev + 1);
   }, [model, modelLoadAttempts, onError]);
 
   // Movement, scale and rotation controls
@@ -341,9 +383,19 @@ const ARScene: React.FC<ARSceneProps> = ({ model, scale, rotation, onError, onTr
     });
   }, []);
 
-  const scaleModel = useCallback((scaleAction: string) => {
+  // Scale controls - now also used by pinch gesture
+  const scaleModel = useCallback((scaleAction: string | number) => {
     setModelScale(current => {
       const [x, y, z] = current;
+      
+      // If we got a number, it's a direct scale factor from pinch
+      if (typeof scaleAction === 'number') {
+        // Limit scale to reasonable bounds
+        const newScale = Math.max(0.05, Math.min(2.0, scaleAction));
+        return [newScale, newScale, newScale] as [number, number, number];
+      }
+      
+      // Otherwise it's a direction string
       const scaleChange = 0.05;
       switch(scaleAction) {
         case 'increase': return [x + scaleChange, y + scaleChange, z + scaleChange] as [number, number, number];
@@ -351,6 +403,38 @@ const ARScene: React.FC<ARSceneProps> = ({ model, scale, rotation, onError, onTr
         default: return current;
       }
     });
+  }, []);
+
+  // Handle pinch gesture for zooming
+  const handlePinch = useCallback((pinchState: any, scaleFactor: number, source: any) => {
+    if (pinchState === 1) { // Started
+      lastPinchDistance.current = scaleFactor;
+    } else if (pinchState === 2 && lastPinchDistance.current !== null) { // Changed
+      // Calculate the difference from last pinch
+      const scaleDiff = scaleFactor / lastPinchDistance.current;
+      
+      // Apply the scaling to current model scale
+      setModelScale(currentScale => {
+        const [x, y, z] = currentScale;
+        const newScale = [
+          x * scaleDiff,
+          y * scaleDiff,
+          z * scaleDiff
+        ] as [number, number, number];
+        
+        // Limit the scale to reasonable bounds
+        return [
+          Math.max(0.05, Math.min(2.0, newScale[0])),
+          Math.max(0.05, Math.min(2.0, newScale[1])),
+          Math.max(0.05, Math.min(2.0, newScale[2]))
+        ];
+      });
+      
+      // Update for next change
+      lastPinchDistance.current = scaleFactor;
+    } else if (pinchState === 3) { // Ended
+      lastPinchDistance.current = null;
+    }
   }, []);
 
   const rotateModel = useCallback((axis: string, amount: number = 15) => {
@@ -400,7 +484,7 @@ const ARScene: React.FC<ARSceneProps> = ({ model, scale, rotation, onError, onTr
             }}
           />
           <ViroText
-            text="Loading model..."
+            text={`Loading ${model?.name || 'model'}...`}
             position={[0, -0.3, 0]}
             scale={[1, 1, 1]}
             width={2}
@@ -410,34 +494,48 @@ const ARScene: React.FC<ARSceneProps> = ({ model, scale, rotation, onError, onTr
         </ViroNode>
       )}
 
-      {/* 3D Model */}
+      {/* Interactive 3D Model with pinch to zoom - use key from modelInfo to force reload */}
       <ViroNode 
         position={modelPosition} 
         scale={[0.8, 0.8, 0.8] as [number, number, number]} 
-        rotation={[0, 0, 0] as [number, number, number]}>
+        rotation={[0, 0, 0] as [number, number, number]}
+        onPinch={handlePinch}>
         <Viro3DObject
-          source={modelInfo.source}
-          type={modelInfo.type}
+          key={safeModelSource.key} // Use key from safeModelSource to force recreation
+          source={{ uri: safeModelSource.uri }}
+          type={safeModelSource.type}
           scale={modelScale}
           rotation={modelRotation}
           highAccuracyEvents={true}
           animation={{ name: "rotate", run: modelLoaded, loop: true }}
           onLoadStart={() => {
-            setIsLoading(true);
-            setModelLoaded(false);
-            setErrorMessage(null);
+            try {
+              console.log(`Starting to load model: ${model?.name || 'unknown'} with key ${safeModelSource.key}`);
+              setIsLoading(true);
+              setModelLoaded(false);
+              setErrorMessage(null);
+            } catch (error) {
+              console.error("Error in onLoadStart:", error);
+            }
           }}
           onLoadEnd={() => {
-            setIsLoading(false);
-            setModelLoaded(true);
+            try {
+              if (!isMounted.current) return;
+              console.log(`Successfully loaded model: ${model?.name || 'unknown'} with key ${safeModelSource.key}`);
+              setIsLoading(false);
+              setModelLoaded(true);
+            } catch (error) {
+              console.error("Error in onLoadEnd:", error);
+            }
           }}
           onError={handleModelError}
         />
       </ViroNode>
 
-      {/* Model description text */}
-      {modelLoaded && showDescription && (
+      {/* Model description text - only show if model is loaded */}
+      {modelLoaded && showDescription && model && (
         <ViroText
+          key={`desc-${safeModelSource.key}`} // Match the 3D object key
           text={modelDescription}
           width={2}
           height={0.5}
@@ -459,99 +557,6 @@ const ARScene: React.FC<ARSceneProps> = ({ model, scale, rotation, onError, onTr
       {/* Controls - only when model is loaded */}
       {modelLoaded && (
         <>
-          {/* Row 1: Movement */}
-          <ViroNode position={[-0.6, -0.5, -1.2]}>
-            <ViroText
-              text="Move"
-              position={[0, 0.05, 0]}
-              scale={[0.1, 0.1, 0.1]}
-              style={{ color: 'white', textAlign: 'center' }}
-            />
-            <ViroText
-              text="←"
-              position={[-0.05, 0, 0]}
-              scale={[0.1, 0.1, 0.1]}
-              style={{ color: 'white', textAlign: 'center' }}
-              onClick={() => moveModel('left')}
-            />
-            <ViroText
-              text="→"
-              position={[0.05, 0, 0]}
-              scale={[0.1, 0.1, 0.1]}
-              style={{ color: 'white', textAlign: 'center' }}
-              onClick={() => moveModel('right')}
-            />
-            <ViroText
-              text="↑"
-              position={[0, 0.05, 0]}
-              scale={[0.1, 0.1, 0.1]}
-              style={{ color: 'white', textAlign: 'center' }}
-              onClick={() => moveModel('forward')}
-            />
-            <ViroText
-              text="↓"
-              position={[0, -0.05, 0]}
-              scale={[0.1, 0.1, 0.1]}
-              style={{ color: 'white', textAlign: 'center' }}
-              onClick={() => moveModel('backward')}
-            />
-          </ViroNode>
-          
-          {/* Row 2: Scale */}
-          <ViroNode position={[0, -0.5, -1.2]}>
-            <ViroText
-              text="Scale"
-              position={[0, 0.05, 0]}
-              scale={[0.1, 0.1, 0.1]}
-              style={{ color: 'white', textAlign: 'center' }}
-            />
-            <ViroText
-              text="+"
-              position={[0.05, 0, 0]}
-              scale={[0.1, 0.1, 0.1]}
-              style={{ color: 'white', textAlign: 'center' }}
-              onClick={() => scaleModel('increase')}
-            />
-            <ViroText
-              text="-"
-              position={[-0.05, 0, 0]}
-              scale={[0.1, 0.1, 0.1]}
-              style={{ color: 'white', textAlign: 'center' }}
-              onClick={() => scaleModel('decrease')}
-            />
-          </ViroNode>
-          
-          {/* Row 3: Rotate */}
-          <ViroNode position={[0.6, -0.5, -1.2]}>
-            <ViroText
-              text="Rotate"
-              position={[0, 0.05, 0]}
-              scale={[0.1, 0.1, 0.1]}
-              style={{ color: 'white', textAlign: 'center' }}
-            />
-            <ViroText
-              text="X"
-              position={[-0.05, 0, 0]}
-              scale={[0.1, 0.1, 0.1]}
-              style={{ color: 'white', textAlign: 'center' }}
-              onClick={() => rotateModel('x')}
-            />
-            <ViroText
-              text="Y"
-              position={[0, 0, 0]}
-              scale={[0.1, 0.1, 0.1]}
-              style={{ color: 'white', textAlign: 'center' }}
-              onClick={() => rotateModel('y')}
-            />
-            <ViroText
-              text="Z"
-              position={[0.05, 0, 0]}
-              scale={[0.1, 0.1, 0.1]}
-              style={{ color: 'white', textAlign: 'center' }}
-              onClick={() => rotateModel('z')}
-            />
-          </ViroNode>
-          
           {/* Toggle description */}
           <ViroNode position={[0, -0.6, -1.2]}>
             <ViroText
@@ -603,6 +608,129 @@ const InfoModal = React.memo(({ isVisible, model, onClose }: { isVisible: boolea
   );
 });
 
+// Add an error boundary component for the AR scene
+class ARErrorBoundary extends React.Component<
+  { children: React.ReactNode; onError: () => void },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode; onError: () => void }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(_: Error) {
+    // Update state so the next render will show the fallback UI
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("AR Error Boundary caught error:", error, errorInfo);
+    this.props.onError();
+  }
+
+  render() {
+    if (this.state.hasError) {
+      // Render fallback UI
+      return (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorTitle}>Something went wrong with AR</Text>
+          <Text style={styles.errorMessage}>The AR experience encountered an error.</Text>
+          <TouchableOpacity 
+            style={styles.errorButton}
+            onPress={() => this.setState({ hasError: false })}
+          >
+            <Text style={styles.errorButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+// Add a global emergency fallback model for cases where model loading fails completely
+// Use type assertion to avoid requiring all properties
+const FALLBACK_MODEL = {
+  _id: 'fallback',
+  name: 'Fallback Box',
+  description: 'A simple 3D box model for when other models cannot be loaded.',
+  modelFile: 'https://storage.googleapis.com/actlab-public/models/Box.glb',
+  fileType: 'GLB',
+  scale: { x: 0.2, y: 0.2, z: 0.2 },
+  rotation: { x: 0, y: 0, z: 0 }
+} as ARModel;
+
+// Add a reliable model loading wrapper to avoid URL constructor issues
+const createSafeModelSource = (model: ARModel | null): { uri: string, type: "OBJ" | "GLB" | "VRX" | "GLTF", scale: [number, number, number], key: string } => {
+  // Default fallback values
+  const fallbackSource = {
+    uri: "https://storage.googleapis.com/actlab-public/models/Box.glb",
+    type: "GLB" as const,
+    scale: [0.2, 0.2, 0.2] as [number, number, number],
+    key: 'fallback-model'
+  };
+  
+  if (!model || !model.modelFile) {
+    console.log("No valid model provided, using fallback");
+    return fallbackSource;
+  }
+  
+  try {
+    console.log(`Creating safe model source for: ${model.name}`);
+    
+    // Determine source URL safely (no URL constructor)
+    let sourceUri: string;
+    
+    if (model.modelFile.startsWith('/uploads')) {
+      // API path - concatenate with base URL
+      sourceUri = `${API_CONFIG.BASE_URL}${model.modelFile}`;
+    } else if (model.modelFile.startsWith('http://') || model.modelFile.startsWith('https://')) {
+      // Already a full URL
+      sourceUri = model.modelFile;
+    } else {
+      // Unknown format - use fallback
+      console.warn(`Invalid model URL format: ${model.modelFile}`);
+      return fallbackSource;
+    }
+    
+    // Determine file type from extension or provided type
+    let type: "OBJ" | "GLB" | "VRX" | "GLTF" = "GLB";
+    if (model.fileType) {
+      const fileType = model.fileType.toLowerCase();
+      if (fileType === 'obj') type = 'OBJ';
+      else if (fileType === 'glb') type = 'GLB';
+      else if (fileType === 'gltf') type = 'GLTF';
+      else if (fileType === 'vrx') type = 'VRX';
+    } else {
+      // Try to determine from URL
+      const ext = sourceUri.split('.').pop()?.toLowerCase();
+      if (ext === 'obj') type = 'OBJ';
+      else if (ext === 'glb') type = 'GLB';
+      else if (ext === 'gltf') type = 'GLTF';
+      else if (ext === 'vrx') type = 'VRX';
+    }
+    
+    // Extract scale safely
+    let scale: [number, number, number] = [0.2, 0.2, 0.2];
+    if (model.scale && typeof model.scale === 'object' && 'x' in model.scale) {
+      scale = [model.scale.x, model.scale.y, model.scale.z];
+    }
+    
+    console.log(`Model source resolved: ${sourceUri}, type: ${type}`);
+    
+    return {
+      uri: sourceUri,
+      type,
+      scale,
+      key: `model-${model._id}-${Date.now()}`
+    };
+  } catch (error) {
+    console.error("Error creating safe model source:", error);
+    return fallbackSource;
+  }
+};
+
 const ARLearnScreen: React.FC = () => {
   // Access navigation
   const navigation = useNavigation();
@@ -621,6 +749,7 @@ const ARLearnScreen: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [arViewActive, setArViewActive] = useState(true);
   const [modelLoadAttempts, setModelLoadAttempts] = useState(0);
+  const [resetKey, setResetKey] = useState(0); // Used to force re-renders
   // Loading state for AR scene spinner
   const [arSceneLoading, setArSceneLoading] = useState(true);
   
@@ -833,6 +962,100 @@ const ARLearnScreen: React.FC = () => {
     }
   }, [models, isLoading, dispatch]);
   
+  // Enhanced model selection with complete unmount/remount cycle to avoid URL constructor issues
+  const handleModelSelection = useCallback((selectedModel: ARModel) => {
+    try {
+      // Validation check - ensure the model has required properties
+      if (!selectedModel || !selectedModel._id) {
+        console.warn('Invalid model selected:', selectedModel);
+        return;
+      }
+
+      // Only change if selecting a different model
+      if (currentModel?._id !== selectedModel._id) {
+        console.log(`Selecting new model: ${selectedModel.name} (${selectedModel._id})`);
+        
+        // Validate model data - check if either modelFile exists 
+        const hasModelFile = Boolean(selectedModel.modelFile);
+        
+        if (!hasModelFile) {
+          console.warn('Selected model has no modelFile:', selectedModel);
+          Alert.alert(
+            'Model Not Available',
+            'This 3D model cannot be displayed. Please select another model.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+        
+        // Show loading state
+        setArSceneLoading(true);
+        
+        // Reset model load attempts
+        setModelLoadAttempts(0);
+        
+        // IMPORTANT: First, completely remove the AR navigator from the view
+        setArViewActive(false);
+        
+        // Clear any previous timeouts to prevent race conditions
+        if (window.modelSelectionTimeout) {
+          clearTimeout(window.modelSelectionTimeout);
+          window.modelSelectionTimeout = null;
+        }
+        
+        // Use a significant timeout to ensure complete cleanup 
+        const timeoutId = setTimeout(() => {
+          try {
+            // Make sure component is still mounted
+            if (!isMounted.current) return;
+            
+            // Force a complete re-render with a new key
+            setResetKey(prevKey => prevKey + 1);
+            
+            // THEN update the selected model in Redux
+            dispatch(selectModel(selectedModel));
+            
+            // Wait a bit more before re-enabling the AR view
+            setTimeout(() => {
+              if (!isMounted.current) return;
+              
+              // Only now re-enable the AR view with the new model
+              setArViewActive(true);
+              
+              console.log(`Model selection complete for ${selectedModel.name}`);
+            }, 100);
+          } catch (timeoutError) {
+            console.error('Error in model selection timeout handler:', timeoutError);
+            // If an error occurs, still try to recover by re-enabling the AR view
+            setArViewActive(true);
+          }
+        }, 500); // Extended timeout for more reliable cleanup
+        
+        // Store the timeout ID
+        window.modelSelectionTimeout = timeoutId;
+      }
+    } catch (error) {
+      console.error('Error in handleModelSelection:', error);
+      
+      // Recovery: Make sure AR view is active
+      setArViewActive(true);
+      
+      // Show error to user
+      Alert.alert(
+        'Error',
+        'Failed to select the model. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
+  }, [currentModel, dispatch, setArSceneLoading, isMounted]);
+  
+  // This useEffect will handle model changes and make sure we reset AR state
+  useEffect(() => {
+    if (currentModel) {
+      console.log(`Current model set to: ${currentModel.name}`);
+    }
+  }, [currentModel]);
+  
   // Render with improved navigation and error handling
   return (
     <ErrorBoundary>
@@ -863,41 +1086,98 @@ const ARLearnScreen: React.FC = () => {
           )}
           
           {currentModel && arViewActive && (
-            <ViroARSceneNavigator
-              autofocus={true}
-              initialScene={{
-                scene: () => (
-                  <ARScene 
-                    model={currentModel} 
-                    scale={scale} 
-                    rotation={rotation} 
-                    onError={(error) => {
-                      console.log('🔄 ARScene error:', error);
-                      
-                      // Show an alert if all fallbacks have failed
-                      if (error.critical) {
-                        Alert.alert(
-                          'Error Loading 3D Model',
-                          'We could not load any 3D models. Please check your internet connection and try again.',
-                          [{ text: 'OK', onPress: () => console.log('Alert closed') }]
-                        );
-                      }
-                      
-                      // Update loading state
-                      handleARSceneLoading(false);
-                    }}
-                    // Pass tracking update handler to ARScene
-                    onTrackingUpdated={(state) => {
-                      // When tracking becomes normal, we know AR is initialized
-                      if (state === ViroTrackingStateConstants.TRACKING_NORMAL) {
-                        handleARSceneLoading(false);
-                      }
-                    }}
-                  />
-                ),
+            <ARErrorBoundary 
+              onError={() => {
+                console.log("AR Error boundary triggered");
+                setArSceneLoading(false);
+                
+                // Restart AR view with delay
+                setArViewActive(false);
+                setTimeout(() => {
+                  setResetKey(prev => prev + 1);
+                  setArViewActive(true);
+                }, 500);
               }}
-              style={styles.arView}
-            />
+            >
+              <ViroARSceneNavigator
+                key={`ar-nav-${resetKey}`} // Use only resetKey to ensure complete recreation
+                autofocus={true}
+                initialScene={{
+                  scene: () => {
+                    try {
+                      // Safe model preparation outside of ARScene to avoid URL constructor issues
+                      const modelSource = createSafeModelSource(currentModel || FALLBACK_MODEL);
+                      
+                      // Log source information for debugging
+                      console.log(`Creating AR scene with model source: ${modelSource.uri}`);
+                      
+                      return (
+                        <ARScene 
+                          model={currentModel || FALLBACK_MODEL}
+                          scale={scale}
+                          rotation={rotation}
+                          onError={(error) => {
+                            try {
+                              console.log('🔄 ARScene error:', error);
+                              
+                              // Show an alert if all fallbacks have failed
+                              if (error.critical) {
+                                Alert.alert(
+                                  'Error Loading 3D Model',
+                                  'We could not load the 3D model. Please check your internet connection and try again.',
+                                  [{ 
+                                    text: 'OK', 
+                                    onPress: () => {
+                                      // Try to recover by forcing the scene to reset
+                                      setResetKey(prev => prev + 1);
+                                    } 
+                                  }]
+                                );
+                              }
+                              
+                              // Update loading state
+                              handleARSceneLoading(false);
+                              // Increment model load attempts
+                              setModelLoadAttempts(prev => prev + 1);
+                            } catch (handlerError) {
+                              console.error('Error handling ARScene error:', handlerError);
+                            }
+                          }}
+                          // Pass tracking update handler to ARScene
+                          onTrackingUpdated={(state) => {
+                            try {
+                              // When tracking becomes normal, we know AR is initialized
+                              if (state === ViroTrackingStateConstants.TRACKING_NORMAL) {
+                                handleARSceneLoading(false);
+                              }
+                            } catch (error) {
+                              console.error('Error in tracking update handler:', error);
+                            }
+                          }}
+                        />
+                      );
+                    } catch (sceneError) {
+                      console.error("Error rendering AR scene:", sceneError);
+                      // Return a minimal scene if main scene fails
+                      return (
+                        <ViroARScene>
+                          <ViroText
+                            text="Error loading AR scene. Please try again."
+                            position={[0, 0, -1]}
+                            style={{ fontSize: 20, color: 'white', textAlignVertical: 'center', textAlign: 'center' }}
+                          />
+                        </ViroARScene>
+                      );
+                    }
+                  },
+                }}
+                style={styles.arView}
+                viroAppProps={{
+                  safeModel: currentModel ? createSafeModelSource(currentModel) : null,
+                  resetKey: resetKey
+                }}
+              />
+            </ARErrorBoundary>
           )}
         </View>
 
@@ -920,11 +1200,7 @@ const ARLearnScreen: React.FC = () => {
                     styles.enhancedModelCard,
                     currentModel?.name === item.name && styles.enhancedSelectedModelCard
                   ]}
-                  onPress={() => {
-                    // Set loading to true when changing models
-                    setArSceneLoading(true);
-                    dispatch(selectModel(item));
-                  }}
+                  onPress={() => handleModelSelection(item)}
                   activeOpacity={0.7}
                 >
                   <View style={styles.modelIconContainer}>
@@ -937,7 +1213,7 @@ const ARLearnScreen: React.FC = () => {
                   <Text style={[
                     styles.enhancedModelTitle,
                     currentModel?.name === item.name && styles.enhancedSelectedModelTitle
-                  ]}>{item.name}</Text>
+                  ]} numberOfLines={2} ellipsizeMode="tail">{item.name}</Text>
                   <View style={styles.modelBadge}>
                     <Text style={styles.modelBadgeText}>
                       {item.fileType || 'OBJ'}
@@ -1049,7 +1325,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 5,
-    maxHeight: 180,
+    maxHeight: 200,  // Increased from 180 to allow more space
   },
   sectionTitle: {
     fontSize: 18,
@@ -1208,11 +1484,12 @@ const styles = StyleSheet.create({
   },
   modelScrollContent: {
     paddingVertical: 8,
-    paddingBottom: 12,
+    paddingBottom: 16,  // Increased padding to avoid cutting off
+    paddingRight: 10,  // Added padding to the right
   },
   enhancedModelCard: {
     width: 100,
-    height: 130,
+    height: 140,  // Increased from 130 to fit content better
     marginRight: 10,
     borderRadius: 16,
     backgroundColor: '#FFFFFF',
@@ -1226,6 +1503,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
     position: 'relative',
+    overflow: 'visible',  // Ensure nothing gets cut off
   },
   enhancedSelectedModelCard: {
     backgroundColor: '#6A1B9A',
@@ -1254,6 +1532,8 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: '600',
     width: '100%',
+    height: 32,  // Fixed height to accommodate two lines
+    flexWrap: 'wrap',  // Allow text to wrap
   },
   enhancedSelectedModelTitle: {
     color: '#FFFFFF',
@@ -1267,10 +1547,41 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 6,
     paddingVertical: 2,
+    zIndex: 1,  // Ensure badge appears on top
   },
   modelBadgeText: {
     fontSize: 8,
     color: '#6A1B9A',
+    fontWeight: 'bold',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000',
+    padding: 20,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 12,
+  },
+  errorMessage: {
+    fontSize: 16,
+    color: '#CCCCCC',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  errorButton: {
+    backgroundColor: '#6A1B9A',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  errorButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
     fontWeight: 'bold',
   },
 });
@@ -1308,6 +1619,18 @@ try {
   console.log('✅ ViroAnimations and materials registered successfully');
 } catch (error) {
   console.error('Failed to register animations or materials:', error);
+}
+
+// Add a type declaration for the window.modelSelectionTimeout property
+declare global {
+  interface Window {
+    modelSelectionTimeout: NodeJS.Timeout | null;
+  }
+}
+
+// Initialize the window.modelSelectionTimeout property if it doesn't exist
+if (typeof window !== 'undefined' && window.modelSelectionTimeout === undefined) {
+  window.modelSelectionTimeout = null;
 }
 
 export default React.memo(ARLearnScreen); 
