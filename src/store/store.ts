@@ -5,6 +5,7 @@ import modulesReducer from './slices/modulesSlice';
 import quizReducer from './slices/quizSlice';
 import emotionReducer from './slices/emotionSlice';
 import arModelsReducer from './slices/arModelsSlice';
+import lessonsReducer from './slices/lessonsSlice';
 
 const store = configureStore({
   reducer: {
@@ -14,6 +15,7 @@ const store = configureStore({
     quiz: quizReducer,
     emotion: emotionReducer,
     arModels: arModelsReducer,
+    lessons: lessonsReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

@@ -1,4 +1,38 @@
 // API Configuration
+
+// Base URLs for different environments
+const API_ENDPOINTS = {
+  development: {
+    // Use your local API server when developing
+    EMOTION_API: 'http://192.168.8.192:5000/api/emotion/analyze', // For Android Emulator
+    // EMOTION_API: 'http://localhost:5000/api/emotion/analyze', // For iOS simulator
+  },
+  production: {
+    // Use your production API server when deployed
+    EMOTION_API: 'https://your-production-api.com/api/emotion/analyze',
+  },
+  staging: {
+    // Use your staging API server when testing
+    EMOTION_API: 'https://your-staging-api.com/api/emotion/analyze',
+  },
+};
+
+// Determine the current environment
+// In a real app, you might want to get this from an environment variable
+const ENVIRONMENT = __DEV__ ? 'development' : 'production';
+
+// Export the API endpoints for the current environment
+export const API = API_ENDPOINTS[ENVIRONMENT];
+
+// API request timeouts in milliseconds
+export const TIMEOUTS = {
+  SHORT: 5000,    // 5 seconds
+  STANDARD: 15000, // 15 seconds
+  LONG: 30000,    // 30 seconds
+  VERY_LONG: 60000 // 60 seconds
+};
+
+// Other API related configuration
 export const API_CONFIG = {
   // Base URL for API requests
   BASE_URL: 'http://192.168.8.192:5000/api',
@@ -28,17 +62,11 @@ export const API_CONFIG = {
     QUIZZES: '/quizzes',
     // AR Model Endpoints
     ALL_AR_MODELS: '/armodels',
-  },
-  
-  // API Timeouts (in milliseconds)
-  TIMEOUTS: {
-    REQUEST: 10000, // 10 seconds
-    UPLOAD: 30000,  // 30 seconds
-  },
-  
-  // API Headers
-  HEADERS: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-  },
+  }
+};
+
+export default {
+  API,
+  TIMEOUTS,
+  API_CONFIG
 }; 

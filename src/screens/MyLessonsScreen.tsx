@@ -18,7 +18,7 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import type { Lesson, Subject, SubjectType, Difficulty } from '../types/lessons';
-import type { RootTabParamList, SubjectStackParamList } from '../types/navigation';
+import type { RootTabParamList, SubjectStackParamList, MainStackParamList } from '../types/navigation';
 import { useToast } from '../context/ToastContext';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { fetchModules, selectModules, selectModulesLoading, selectModulesError, Module } from '../store/slices/modulesSlice';
@@ -29,6 +29,9 @@ type NavigationProp = CompositeNavigationProp<
 >;
 
 type RouteProps = RouteProp<RootTabParamList, 'My Lessons'>;
+
+// Add a type for the navigation prop
+type MyLessonsScreenNavigationProp = NativeStackNavigationProp<MainStackParamList>;
 
 interface ModuleCardProps {
   module: Module;
@@ -106,7 +109,7 @@ const FilterButton: React.FC<FilterButtonProps> = ({ title, isSelected, onPress,
 );
 
 const MyLessonsScreen: React.FC = () => {
-  const navigation = useNavigation<NavigationProp>();
+  const navigation = useNavigation<MyLessonsScreenNavigationProp>();
   const route = useRoute<RouteProps>();
   const { width } = useWindowDimensions();
   const [selectedModule, setSelectedModule] = useState<string | null>(null);
@@ -150,9 +153,15 @@ const MyLessonsScreen: React.FC = () => {
   const handleModulePress = useCallback((module: Module) => {
     setSelectedModule(module._id);
     
-    // Navigate to ScienceScreen regardless of the module title
-    navigation.navigate('Science');
+    // Use getParent to access the root navigator that contains the SubjectDetails screen
+    navigation.getParent()?.navigate('SubjectDetails', {
+      subjectId: module._id, // This would come from your data in a real app
+      subjectName: module.title,
+      subjectColor: '#4CAF50', // Green for Science
+      subjectIcon: 'microscope'
+    });
     showToast(`Opening ${module.title} module`, 'info');
+    console.log('Module pressed', module.lessons);
   }, [navigation, showToast]);
 
   const handleFilterChange = (filter: string) => {
@@ -196,7 +205,7 @@ const MyLessonsScreen: React.FC = () => {
           <TouchableOpacity 
             style={styles.recommendationCard}
             onPress={() => {
-              navigation.navigate('AR Learn');
+              navigation.getParent()?.navigate('ARLearn');
               showToast('Starting AR Space Adventure! 🚀', 'info');
             }}>
             <MaterialCommunityIcons name="rocket" size={32} color="#6A1B9A" />
@@ -248,7 +257,12 @@ const MyLessonsScreen: React.FC = () => {
                     icon: lesson.icon || module.icon,
                     color: module.color
                   }}
-                  onPress={() => handleModulePress(module)}
+                  onPress={() => handleModulePress({
+                    ...module,
+                    title: lesson.title,
+                    description: lesson.description,
+                    _id: lesson._id
+                  } as Module)}
                 />
               ))
             ).flat()

@@ -1,16 +1,27 @@
 import api, { API_CONFIG } from './api';
 
 export interface Lesson {
+  _id: string;
+  title: string;
+  description: string;
+  icon?: string;
+  // Add other lesson fields as needed
+}
+
+export interface LessonDetail {
   id: string;
   title: string;
   description: string;
+  duration: string;
+  progress: number;
+  difficulty: string;
+  icon: string;
+  subject: string;
+  arEnabled: boolean;
+  youtubeLink?: string;
+  images: string[];
   content: string;
-  moduleId: string;
-  order: number;
-  duration: number; // in minutes
-  createdAt: string;
-  updatedAt: string;
-  // Add other lesson fields as needed
+  quizzes: any[];
 }
 
 export interface CreateLessonData {
@@ -98,6 +109,20 @@ class LessonService {
         throw new Error(`Failed to delete lesson: ${error.message}`);
       }
       throw new Error('Failed to delete lesson: An unexpected error occurred');
+    }
+  }
+
+  // Get lesson details with extended information
+  async getLessonDetail(id: string): Promise<LessonDetail> {
+    try {
+      const endpoint = API_CONFIG.ENDPOINTS.LESSON_DETAIL.replace(':id', id);
+      const response = await api.get<{ success: boolean, data: LessonDetail }>(endpoint);
+      return response.data.data;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to get lesson detail: ${error.message}`);
+      }
+      throw new Error('Failed to get lesson detail: An unexpected error occurred');
     }
   }
 }

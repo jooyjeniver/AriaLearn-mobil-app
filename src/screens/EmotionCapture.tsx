@@ -13,6 +13,7 @@ import { Camera, CameraType } from 'react-native-camera-kit';
 import { useNavigation } from '@react-navigation/native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useEmotionAnalyzer } from '../hooks/useEmotionAnalyzer';
+import { API } from '../config/api';
 
 const EmotionCapture: React.FC = () => {
   const navigation = useNavigation();
@@ -105,6 +106,26 @@ const EmotionCapture: React.FC = () => {
       );
     }
   };
+
+  // Debug information
+  useEffect(() => {
+    console.log('============ ENVIRONMENT DEBUG INFO ============');
+    console.log('Platform:', Platform.OS);
+    console.log('API URL:', API.EMOTION_API);
+    console.log('Development mode:', __DEV__ ? 'Yes' : 'No');
+    
+    // Check if the device can reach the API endpoint
+    fetch(API.EMOTION_API.split('/api')[0])
+      .then(response => {
+        console.log('API base URL is reachable. Status:', response.status);
+      })
+      .catch(error => {
+        console.log('API base URL is not reachable:', error.message);
+        console.log('This could indicate network connectivity issues or incorrect API URL');
+      });
+    
+    console.log('==============================================');
+  }, []);
 
   // Render loading state if waiting for device or camera permission
   if (!hasPermission) {

@@ -1,0 +1,25 @@
+﻿            ]}
+            onPress={() => setActiveTab('quizzes')}
+          >
+            <Animated.View 
+              style={{ 
+                transform: [
+                  activeTab === 'quizzes' ? { translateY: bounce } : { translateY: 0 }
+                ] 
+              }}
+            >
+              <MaterialCommunityIcons 
+                name="help-circle-outline" 
+                size={24} 
+                color={activeTab === 'quizzes' ? (subjectColor || '#FF9800') : '#757575'} 
+              />
+            </Animated.View>
+            <Text style={[
+              styles.tabText,
+              { color: activeTab === 'quizzes' ? (subjectColor || '#FF9800') : '#757575' }
+            ]}>Fun Quiz</Text>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
+      
+      {/* Main Content */}

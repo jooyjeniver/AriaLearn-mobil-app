@@ -12,27 +12,33 @@ import {
 } from 'react-native';
 import { useSelector } from 'react-redux';
 import { useAppDispatch } from '../store/hooks';
-import { answerQuestion, nextQuestion, resetCurrentQuiz } from '../store/slices/quizSlice';
+import { answerQuestion, nextQuestion, resetCurrentQuiz, submitQuizScore } from '../store/slices/quizSlice';
 import { RootState } from '../store/store';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { MainStackParamList } from '../types/navigation';
 
 const QuizGameScreen: React.FC = () => {
   const dispatch = useAppDispatch();
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const { selectedQuiz, currentQuestion, userAnswers } = useSelector((state: RootState) => state.quiz);
-  const [answered, setAnswered] = useState(false);
-  const [selectedOption, setSelectedOption] = useState<number | null>(null);
-
+  
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [isCorrect, setIsCorrect] = useState(false);
+  const [startTime] = useState(Date.now());
+  
+  // Calculate current score
+  const score = userAnswers.filter(answer => answer.isCorrect).length;
+  
+  // If no quiz is selected, redirect back to games screen
   useEffect(() => {
     if (!selectedQuiz) {
-      Alert.alert('Error', 'No quiz selected!', [
-        { text: 'OK', onPress: () => navigation.goBack() }
-      ]);
+      navigation.goBack();
     }
   }, [selectedQuiz, navigation]);
-
-  // If no quiz is selected yet, show loading
+  
   if (!selectedQuiz) {
     return (
       <SafeAreaView style={styles.container}>
@@ -43,173 +49,154 @@ const QuizGameScreen: React.FC = () => {
       </SafeAreaView>
     );
   }
-
-  const questions = selectedQuiz.questions || [];
-  const question = questions[currentQuestion];
-
-  // Safety check for valid question
-  if (!question) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.errorContainer}>
-          <MaterialCommunityIcons name="alert-circle-outline" size={60} color="#F44336" />
-          <Text style={styles.errorText}>Question not found</Text>
-          <TouchableOpacity 
-            style={styles.backButton} 
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={styles.backButtonText}>Back to Games</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const handleOptionSelect = (optionIndex: number) => {
-    if (answered) return; // Prevent selecting after already answering
+  
+  const currentQuizQuestion = selectedQuiz.questions[currentQuestion];
+  const isLastQuestion = currentQuestion === selectedQuiz.questions.length - 1;
+  
+  const handleAnswerSelect = (answer: string, isCorrect: boolean) => {
+    if (showFeedback) return; // Prevent selecting another answer during feedback
     
-    const isCorrect = optionIndex === question.correctAnswerIndex;
-    setSelectedOption(optionIndex);
-    setAnswered(true);
+    setSelectedAnswer(answer);
+    setIsCorrect(isCorrect);
+    setShowFeedback(true);
     
-    // Dispatch action to record the answer
+    // Find the index of the selected option
+    const selectedOptionIndex = currentQuizQuestion.options.findIndex(opt => opt === answer);
+    
     dispatch(answerQuestion({
       questionIndex: currentQuestion,
-      selectedOption: optionIndex,
-      isCorrect
+      selectedOption: selectedOptionIndex,
+      isCorrect,
     }));
-  };
-
-  const handleNext = () => {
-    if (currentQuestion < questions.length - 1) {
-      dispatch(nextQuestion());
-      setAnswered(false);
-      setSelectedOption(null);
-    } else {
-      // End of quiz
-      const correctAnswers = userAnswers.filter(a => a.isCorrect).length;
+    
+    // If last question, submit score after a delay
+    if (isLastQuestion) {
+      const timeTaken = Math.floor((Date.now() - startTime) / 1000); // Time in seconds
       
-      Alert.alert(
-        'Quiz Completed!',
-        `You got ${correctAnswers} out of ${questions.length} questions correct.`,
-        [
-          {
-            text: 'Back to Games',
-            onPress: () => {
-              dispatch(resetCurrentQuiz());
-              navigation.goBack();
-            },
-          },
-        ]
-      );
+      setTimeout(() => {
+        dispatch(submitQuizScore({
+          userId: "68093c155180515753ba66aa", // In a real app, get this from auth state
+          quizId: selectedQuiz.id,
+          score: score + (isCorrect ? 1 : 0), // Add current answer to score
+          totalQuestions: selectedQuiz.questions.length,
+          timeTaken: timeTaken
+        }));
+        
+        // Show completion alert
+        Alert.alert(
+          "Quiz Completed!",
+          `You scored ${score + (isCorrect ? 1 : 0)} out of ${selectedQuiz.questions.length}`,
+          [
+            { 
+              text: "View Results", 
+              onPress: () => {
+                dispatch(resetCurrentQuiz());
+                navigation.goBack();
+              }
+            }
+          ]
+        );
+      }, 1500);
     }
   };
-
+  
+  const handleNextQuestion = () => {
+    setSelectedAnswer(null);
+    setShowFeedback(false);
+    dispatch(nextQuestion());
+  };
+  
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backIcon} 
-          onPress={() => {
-            Alert.alert(
-              'Exit Quiz',
-              'Are you sure you want to exit? Your progress will be lost.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { 
-                  text: 'Exit', 
-                  onPress: () => {
-                    dispatch(resetCurrentQuiz());
-                    navigation.goBack();
-                  } 
-                },
-              ]
-            )
-          }}
-        >
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.quizTitle}>{selectedQuiz.title}</Text>
-      </View>
-      
-      <View style={styles.progressBar}>
-        <View 
-          style={[
-            styles.progressFill, 
-            { width: `${((currentQuestion + 1) / questions.length) * 100}%` }
-          ]} 
-        />
-      </View>
-      <Text style={styles.progressText}>
-        Question {currentQuestion + 1} of {questions.length}
-      </Text>
-      
-      <ScrollView contentContainerStyle={styles.contentContainer}>
-        <View style={styles.questionCard}>
-          <Text style={styles.questionText}>{question.text}</Text>
-          
-          <View style={styles.optionsContainer}>
-            {question.options.map((option, index) => (
-              <TouchableOpacity
-                key={index}
-                style={[
-                  styles.optionButton,
-                  answered && selectedOption === index && 
-                    (index === question.correctAnswerIndex ? 
-                      styles.correctOption : styles.incorrectOption),
-                  answered && index === question.correctAnswerIndex && 
-                    styles.correctOption
-                ]}
-                onPress={() => handleOptionSelect(index)}
-                disabled={answered}
-              >
-                <Text 
-                  style={[
-                    styles.optionText,
-                    answered && (
-                      index === question.correctAnswerIndex || 
-                      selectedOption === index
-                    ) && styles.answeredOptionText
-                  ]}
-                >
-                  {option}
-                </Text>
-                {answered && index === question.correctAnswerIndex && (
-                  <MaterialCommunityIcons name="check-circle" size={20} color="#fff" style={styles.optionIcon} />
-                )}
-                {answered && selectedOption === index && index !== question.correctAnswerIndex && (
-                  <MaterialCommunityIcons name="close-circle" size={20} color="#fff" style={styles.optionIcon} />
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-          
-          {answered && (
-            <View style={styles.explanationContainer}>
-              <Text style={styles.explanationTitle}>
-                {selectedOption === question.correctAnswerIndex ? 'Correct!' : 'Incorrect!'}
-              </Text>
-              <Text style={styles.explanationText}>
-                {question.explanation || 'The correct answer is ' + question.options[question.correctAnswerIndex]}
-              </Text>
-            </View>
-          )}
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.header}>
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => {
+              Alert.alert(
+                "Quit Quiz?",
+                "Your progress will be lost.",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  { 
+                    text: "Quit", 
+                    onPress: () => {
+                      dispatch(resetCurrentQuiz());
+                      navigation.goBack();
+                    }
+                  }
+                ]
+              );
+            }}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
+          </TouchableOpacity>
+          <Text style={styles.title}>{selectedQuiz.title}</Text>
         </View>
         
-        {answered && (
-          <TouchableOpacity 
-            style={styles.nextButton} 
-            onPress={handleNext}
-          >
-            <Text style={styles.nextButtonText}>
-              {currentQuestion < questions.length - 1 ? 'Next Question' : 'Complete Quiz'}
-            </Text>
-            <MaterialCommunityIcons 
-              name={currentQuestion < questions.length - 1 ? 'arrow-right' : 'check'} 
-              size={20} 
-              color="#fff" 
+        <View style={styles.progressContainer}>
+          <View style={styles.progressBar}>
+            <View 
+              style={[
+                styles.progressFill, 
+                { width: `${((currentQuestion + 1) / selectedQuiz.questions.length) * 100}%` }
+              ]} 
             />
-          </TouchableOpacity>
+          </View>
+          <Text style={styles.progressText}>
+            Question {currentQuestion + 1} of {selectedQuiz.questions.length}
+          </Text>
+        </View>
+        
+        <View style={styles.questionContainer}>
+          <Text style={styles.questionText}>{currentQuizQuestion.text}</Text>
+          
+          {currentQuizQuestion.options.map((option, index) => (
+            <TouchableOpacity
+              key={index}
+              style={[
+                styles.answerOption,
+                selectedAnswer === option && (isCorrect ? styles.correctAnswer : styles.incorrectAnswer)
+              ]}
+              onPress={() => handleAnswerSelect(option, index === currentQuizQuestion.correctAnswerIndex)}
+              disabled={showFeedback}
+            >
+              <Text style={styles.answerText}>{option}</Text>
+              {showFeedback && selectedAnswer === option && (
+                <MaterialCommunityIcons 
+                  name={isCorrect ? "check-circle" : "close-circle"} 
+                  size={24} 
+                  color={isCorrect ? "#4CAF50" : "#F44336"} 
+                />
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+        
+        {showFeedback && (
+          <View style={styles.feedbackContainer}>
+            <Text style={[
+              styles.feedbackText, 
+              { color: isCorrect ? "#4CAF50" : "#F44336" }
+            ]}>
+              {isCorrect ? "Correct!" : "Incorrect!"}
+            </Text>
+            {!isCorrect && (
+              <Text style={styles.correctAnswerText}>
+                The correct answer is: {currentQuizQuestion.options[currentQuizQuestion.correctAnswerIndex]}
+              </Text>
+            )}
+            
+            {!isLastQuestion && (
+              <TouchableOpacity 
+                style={styles.nextButton}
+                onPress={handleNextQuestion}
+              >
+                <Text style={styles.nextButtonText}>Next Question</Text>
+                <MaterialCommunityIcons name="arrow-right" size={20} color="#FFF" />
+              </TouchableOpacity>
+            )}
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -219,7 +206,11 @@ const QuizGameScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F7FA',
+    backgroundColor: '#F5F5F5',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    padding: 16,
   },
   loadingContainer: {
     flex: 1,
@@ -227,59 +218,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    marginTop: 16,
+    marginTop: 10,
     fontSize: 16,
     color: '#666',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    fontSize: 18,
-    color: '#666',
-    marginTop: 16,
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  backButton: {
-    backgroundColor: '#6A1B9A',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  backButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#FFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    marginBottom: 16,
   },
-  backIcon: {
+  backButton: {
     padding: 8,
   },
-  quizTitle: {
+  title: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
     marginLeft: 8,
-    flex: 1,
+  },
+  progressContainer: {
+    marginBottom: 24,
   },
   progressBar: {
     height: 8,
     backgroundColor: '#E0E0E0',
     borderRadius: 4,
-    margin: 16,
-    marginTop: 8,
-    marginBottom: 4,
     overflow: 'hidden',
   },
   progressFill: {
@@ -290,100 +253,82 @@ const styles = StyleSheet.create({
   progressText: {
     fontSize: 14,
     color: '#666',
-    marginHorizontal: 16,
-    marginBottom: 16,
+    marginTop: 8,
+    textAlign: 'right',
   },
-  contentContainer: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  questionCard: {
+  questionContainer: {
     backgroundColor: '#FFF',
     borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
+    padding: 16,
+    marginBottom: 16,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
-        shadowRadius: 8,
+        shadowRadius: 4,
       },
       android: {
-        elevation: 3,
+        elevation: 2,
       },
     }),
   },
   questionText: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: 'bold',
     color: '#333',
-    marginBottom: 20,
-  },
-  optionsContainer: {
     marginBottom: 16,
   },
-  optionButton: {
+  answerOption: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#F0F0F0',
+    alignItems: 'center',
+    backgroundColor: '#F0E6FA',
     borderRadius: 8,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: '#E1BEE7',
   },
-  optionText: {
-    fontSize: 16,
-    color: '#333',
-    flex: 1,
-  },
-  answeredOptionText: {
-    color: '#FFF',
-    fontWeight: '600',
-  },
-  correctOption: {
-    backgroundColor: '#4CAF50',
+  correctAnswer: {
+    backgroundColor: '#E8F5E9',
     borderColor: '#4CAF50',
   },
-  incorrectOption: {
-    backgroundColor: '#F44336',
+  incorrectAnswer: {
+    backgroundColor: '#FFEBEE',
     borderColor: '#F44336',
   },
-  optionIcon: {
-    marginLeft: 8,
-  },
-  explanationContainer: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 8,
-    padding: 16,
-    marginTop: 8,
-  },
-  explanationTitle: {
+  answerText: {
     fontSize: 16,
-    fontWeight: 'bold',
     color: '#333',
+  },
+  feedbackContainer: {
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  feedbackText: {
+    fontSize: 20,
+    fontWeight: 'bold',
     marginBottom: 8,
   },
-  explanationText: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
+  correctAnswerText: {
+    fontSize: 16,
+    color: '#333',
+    marginBottom: 16,
   },
   nextButton: {
-    backgroundColor: '#6A1B9A',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    borderRadius: 8,
+    backgroundColor: '#6A1B9A',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 24,
     marginTop: 16,
   },
   nextButtonText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
+    color: '#FFF',
     fontSize: 16,
+    fontWeight: 'bold',
     marginRight: 8,
   },
 });

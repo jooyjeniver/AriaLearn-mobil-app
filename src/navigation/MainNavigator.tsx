@@ -13,6 +13,7 @@ import type { MainStackParamList } from '../types/navigation';
 import QuizGameScreen from '../screens/QuizGameScreen';
 import EmotionCapture from '../screens/EmotionCapture';
 import EmotionChart from '../screens/EmotionChart';
+import SubjectDetailsScreen from '../screens/SubjectDetailsScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator<MainStackParamList>();
@@ -83,6 +84,20 @@ const MainStack = () => (
     <Stack.Screen
       name="EmotionChart"
       component={EmotionChart}
+      options={{
+        headerShown: false,
+      }}
+    />
+    <Stack.Screen
+      name="SubjectDetails"
+      component={SubjectDetailsScreen}
+      options={{
+        headerShown: false,
+      }}
+    />
+    <Stack.Screen
+      name="ARLearn"
+      component={ARLearnScreen}
       options={{
         headerShown: false,
       }}

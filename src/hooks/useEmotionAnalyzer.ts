@@ -4,6 +4,7 @@ import axios from 'axios';
 import RNFS from 'react-native-fs';
 import { useDispatch } from 'react-redux';
 import { setEmotionData as setReduxEmotionData } from '../store/slices/emotionSlice';
+import { API, TIMEOUTS, API_CONFIG } from '../config/api';
 
 // Types for emotion data
 export interface EmotionValues {
@@ -31,6 +32,60 @@ export interface EmotionApiResponse {
   success: boolean;
   data: EmotionData;
 }
+
+// Generate mock data for fallback when API fails
+const generateMockData = (): EmotionData => {
+  console.log('Generating mock emotion data');
+  
+  return {
+    totalFaces: 1,
+    dominantEmotion: 'happiness',
+    faces: [
+      {
+        emotions: {
+          happiness: 73.425,
+          neutral: 15.55,
+          surprise: 7.718,
+          sadness: 2.205,
+          anger: 0.441,
+          disgust: 0.331,
+          fear: 0.331
+        },
+        dominantEmotion: 'happiness'
+      }
+    ]
+  };
+};
+
+// Add a retry utility function after the generateMockData function
+// Retry function with exponential backoff
+const retryApiCall = async (apiCall, maxRetries = API_CONFIG.RETRY_ATTEMPTS) => {
+  let lastError;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      console.log(`API call attempt ${attempt + 1} of ${maxRetries}`);
+      return await apiCall();
+    } catch (error) {
+      console.log(`Attempt ${attempt + 1} failed:`, error.message);
+      lastError = error;
+      
+      // Check if we should retry
+      if (attempt < maxRetries - 1) {
+        // Exponential backoff with jitter
+        const delay = Math.min(
+          Math.pow(2, attempt) * API_CONFIG.RETRY_DELAY, 
+          10000
+        ) * (0.8 + Math.random() * 0.4); // Add 20% jitter
+        
+        console.log(`Retrying in ${Math.round(delay)}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  
+  throw lastError;
+};
 
 export const useEmotionAnalyzer = () => {
   const [loading, setLoading] = useState(false);
@@ -64,74 +119,73 @@ export const useEmotionAnalyzer = () => {
       // Get base64 data from image
       const base64Data = await getBase64FromPath(cleanPath);
       
-      // Make API call
-      const response = await axios.post(
-        'http://localhost:5000/api/emotion/analyze-base64',
-        { base64: base64Data },
+      console.log('Starting face analysis...');
+      
+      // Create a properly formatted base64 image
+      const formattedBase64 = base64Data.startsWith('data:') ? base64Data : `data:image/jpeg;base64,${base64Data}`;
+      
+      console.log('Making API request to:', API.EMOTION_API);
+      
+      // Use retry logic for the API call
+      const response = await retryApiCall(() => axios.post(
+        API.EMOTION_API,
+        { 
+          image: formattedBase64
+        },
         {
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          timeout: 10000 // 10 second timeout
+          headers: API_CONFIG.HEADERS,
+          timeout: TIMEOUTS.LONG
         }
-      );
-
-      // Process response
-      if (response.data && response.data.success) {
-        setEmotionData(response.data.data);
-        dispatch(setReduxEmotionData({ 
-          emotionData: response.data.data,
+      ));
+      
+      console.log('API response received:', response.status);
+      
+      // Process the response and update state
+      if (response.data) {
+        dispatch(setReduxEmotionData({
+          emotionData: response.data,
           isMockData: false
         }));
+        
+        setEmotionData(response.data);
         setIsMockData(false);
+        setLoading(false);
+        return response.data;
       } else {
-        throw new Error('Invalid response from server');
+        throw new Error('No data received from API');
       }
-    } catch (e: any) {
-      console.error('Error analyzing emotion:', e);
+    } catch (error) {
+      console.error('Error analyzing emotion:', error);
       
-      // For demo purposes: use mock data if API fails
-      if (e.message.includes('Network Error') || e.message.includes('timeout') || e.code === 'ECONNREFUSED') {
-        console.log('Using mock data due to network error');
-        
-        // Mock data for demonstration
-        const mockData: EmotionData = {
-          totalFaces: 1,
-          dominantEmotion: 'happiness',
-          faces: [
-            {
-              emotions: {
-                happiness: 73.425,
-                neutral: 15.55,
-                surprise: 7.718,
-                sadness: 2.205,
-                anger: 0.441,
-                disgust: 0.331,
-                fear: 0.331
-              },
-              dominantEmotion: 'happiness'
-            }
-          ]
-        };
-        
-        setEmotionData(mockData);
-        dispatch(setReduxEmotionData({ 
-          emotionData: mockData,
-          isMockData: true
-        }));
-        setIsMockData(true);
-      } else {
-        setError(e.message || 'Unknown error occurred');
-        
-        // Retry after 3 seconds
-        setTimeout(() => {
-          if (!emotionData) {
-            retry();
-          }
-        }, 3000);
+      // Log detailed error information
+      if (axios.isAxiosError(error)) {
+        console.log('Network error details:', {
+          message: error.message,
+          code: error.code,
+          response: error.response ? {
+            status: error.response.status,
+            data: error.response.data
+          } : 'No response received',
+          request: error.request ? 'Request was made but no response received' : 'Request setup error'
+        });
       }
-    } finally {
+      
+      setError(error);
+      
+      // Fall back to mock data if API fails
+      console.log('Falling back to mock data due to API error');
+      const mockData = generateMockData();
+      
+      dispatch(setReduxEmotionData({
+        emotionData: mockData,
+        isMockData: true
+      }));
+      
+      setEmotionData(mockData);
+      setIsMockData(true);
       setLoading(false);
+      
+      return mockData;
     }
   }, [dispatch]);
 

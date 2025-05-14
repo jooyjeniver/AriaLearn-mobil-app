@@ -75,6 +75,7 @@ export const API_CONFIG = {
     ALL_LESSONS: '/api/lessons',
     CREATE_LESSON: '/api/lessons',
     LESSON_BY_ID: '/api/lessons/:id',
+    LESSON_DETAIL: '/api/lessons/detail/:id',
     UPDATE_LESSON: '/api/lessons/:id',
     DELETE_LESSON: '/api/lessons/:id',
     

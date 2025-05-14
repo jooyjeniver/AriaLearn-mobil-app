@@ -58,8 +58,9 @@ const HomeScreen = () => {
   };
 
   const handleProfilePress = () => {
-    // @ts-ignore - Ignoring type error for navigation between different navigators
-    navigation.navigate('UserProfile' as any);
+    // Use the root navigation to navigate to the Profile screen
+    // The screen is registered as "Profile" in MainNavigator.tsx
+    navigation.getParent()?.navigate('Profile');
   };
 
   return (

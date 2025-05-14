@@ -41,6 +41,40 @@ export interface Quiz {
   questions: QuizQuestion[];
 }
 
+interface QuizResult {
+  user: string;
+  quiz: string;
+  answers: any[];
+  score: number;
+  maxScore: number;
+  percentageScore: number;
+  timeTaken: number;
+  passed: boolean;
+  attemptsCount: number;
+  completedAt: string;
+  _id: string;
+  awardsEarned: any[];
+  __v: number;
+}
+
+interface ScoreResponse {
+  success: boolean;
+  data: {
+    quizResult: QuizResult;
+    pointsEarned: number;
+    currentStreak: number;
+    bestStreak: number;
+  };
+}
+
+interface ScoreSubmission {
+  userId: string;
+  quizId: string;
+  score: number;
+  totalQuestions: number;
+  timeTaken: number;
+}
+
 interface QuizState {
   quizzes: APIQuiz[];  // Changed to store raw API response
   selectedQuiz: Quiz | null;  // Transformed for usage
@@ -49,6 +83,12 @@ interface QuizState {
   loading: boolean;
   error: string | null;
   success: boolean;
+  quizResult: QuizResult | null;
+  pointsEarned: number;
+  currentStreak: number;
+  bestStreak: number;
+  submittingScore: boolean;
+  scoreError: string | null;
 }
 
 // Initial state
@@ -60,6 +100,12 @@ const initialState: QuizState = {
   loading: false,
   error: null,
   success: false,
+  quizResult: null,
+  pointsEarned: 0,
+  currentStreak: 0,
+  bestStreak: 0,
+  submittingScore: false,
+  scoreError: null,
 };
 
 const api = axios.create({
@@ -116,15 +162,14 @@ export const fetchQuizzes = createAsyncThunk(
   }
 );
 
-// Save quiz results
-export const saveQuizResults = createAsyncThunk(
-  'quiz/saveResults',
-  async (data: { quizId: string; score: number; answers: any[] }, { rejectWithValue }) => {
+export const submitQuizScore = createAsyncThunk(
+  'quiz/submitScore',
+  async (scoreData: ScoreSubmission, { rejectWithValue }) => {
     try {
-      const response = await axios.post(`${API_CONFIG.BASE_URL}/api/quizzes/results`, data);
-      return response.data;
+      const response = await axios.post(`${API_CONFIG.BASE_URL}/api/quizzes/score`, scoreData);
+      return response.data as ScoreResponse;
     } catch (error: any) {
-      const message = error.response?.data?.message || error.message || 'Failed to save quiz results';
+      const message = error.response?.data?.message || error.message || 'Failed to submit quiz score';
       return rejectWithValue(message);
     }
   }
@@ -197,18 +242,21 @@ const quizSlice = createSlice({
         state.success = false;
       })
       
-      // Save quiz results cases
-      .addCase(saveQuizResults.pending, (state) => {
-        state.loading = true;
-        state.error = null;
+      // Submit quiz score cases
+      .addCase(submitQuizScore.pending, (state) => {
+        state.submittingScore = true;
+        state.scoreError = null;
       })
-      .addCase(saveQuizResults.fulfilled, (state) => {
-        state.loading = false;
-        state.success = true;
+      .addCase(submitQuizScore.fulfilled, (state, action) => {
+        state.submittingScore = false;
+        state.quizResult = action.payload.data.quizResult;
+        state.pointsEarned = action.payload.data.pointsEarned;
+        state.currentStreak = action.payload.data.currentStreak;
+        state.bestStreak = action.payload.data.bestStreak;
       })
-      .addCase(saveQuizResults.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
+      .addCase(submitQuizScore.rejected, (state, action) => {
+        state.submittingScore = false;
+        state.scoreError = action.payload as string;
       });
   },
 });

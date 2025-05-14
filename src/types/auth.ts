@@ -2,6 +2,14 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  avatar?: string;
+  role: string;
+  isActive: boolean;
+  progress?: {
+    completedLessons: number;
+    totalHours: number;
+    achievements: number;
+  };
   createdAt: string;
   updatedAt: string;
 }

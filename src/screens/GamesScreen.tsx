@@ -1,5 +1,5 @@
 // src/screens/GamesScreen.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,14 @@ import {
 } from 'react-native';
 import { useSelector } from 'react-redux';
 import { useAppDispatch } from '../store/hooks';
-import { answerQuestion, fetchQuizzes, nextQuestion, resetCurrentQuiz, selectQuiz } from '../store/slices/quizSlice';
+import { 
+  answerQuestion, 
+  fetchQuizzes, 
+  nextQuestion, 
+  resetCurrentQuiz, 
+  selectQuiz,
+  submitQuizScore 
+} from '../store/slices/quizSlice';
 import { RootState } from '../store/store';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
@@ -164,38 +171,6 @@ const GAMES: Game[] = [
   },
 ];
 
-const AchievementIcon: React.FC<{ achievement: Achievement }> = ({ achievement }) => (
-  <TouchableOpacity style={styles.achievementContainer}>
-    <View style={[styles.achievementIcon, { backgroundColor: achievement.isUnlocked ? '#F0E6FA' : '#F5F5F5' }]}>
-      <MaterialCommunityIcons
-        name={achievement.icon}
-        size={32}
-        color={achievement.isUnlocked ? achievement.color : '#A0A0A0'}
-      />
-      <View style={styles.achievementPoints}>
-        <Text style={styles.achievementPointsText}>+{achievement.points}</Text>
-      </View>
-    </View>
-    <Text style={[
-      styles.achievementTitle,
-      { color: achievement.isUnlocked ? '#333' : '#A0A0A0' }
-    ]}>
-      {achievement.title}
-    </Text>
-    <View style={styles.achievementProgress}>
-      <View 
-        style={[
-          styles.achievementProgressBar, 
-          { 
-            width: `${(achievement.progress / achievement.requirement) * 100}%`,
-            backgroundColor: achievement.isUnlocked ? achievement.color : '#A0A0A0'
-          }
-        ]} 
-      />
-    </View>
-  </TouchableOpacity>
-);
-
 interface GameCardProps {
   game: Game;
   onPress: () => void;
@@ -288,10 +263,56 @@ const GameCard: React.FC<GameCardProps> = ({ game, onPress }) => {
   );
 };
 
+// Enhance the loading state with animations
+const LoadingState = () => {
+  const bounceAnim = useRef(new Animated.Value(0)).current;
+  
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(bounceAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(bounceAnim, {
+          toValue: 0,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
+  
+  const translateY = bounceAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -10],
+  });
+
+  return (
+    <View style={styles.loadingContainer}>
+      <Animated.View style={{ transform: [{ translateY }] }}>
+        <MaterialCommunityIcons name="gamepad-variant" size={48} color="#6A1B9A" />
+      </Animated.View>
+      <ActivityIndicator size="large" color="#6A1B9A" style={{ marginTop: 10 }} />
+      <Text style={styles.loadingText}>Loading games and quizzes...</Text>
+    </View>
+  );
+};
+
 const GamesScreen: React.FC = () => {
   const dispatch = useAppDispatch();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
-  const { quizzes, loading, error } = useSelector((state: RootState) => state.quiz);
+  const { 
+    quizzes, 
+    loading, 
+    error, 
+    pointsEarned, 
+    currentStreak, 
+    bestStreak,
+    quizResult
+  } = useSelector((state: RootState) => state.quiz);
+
   
   // Fetch quizzes when component mounts
   useEffect(() => {
@@ -300,8 +321,8 @@ const GamesScreen: React.FC = () => {
   
   // Calculate stats
   const totalPoints = ACHIEVEMENTS.reduce((sum, achievement) => 
-    sum + (achievement.isUnlocked ? achievement.points : 0), 0);
-  const totalGamesPlayed = GAMES.reduce((sum, game) => sum + game.timesPlayed, 0);
+    sum + (achievement.isUnlocked ? achievement.points : 0), 0) + (pointsEarned || 0);
+  const totalGamesPlayed = quizzes?.length || 0;
 
   // Handle game selection
   const handleGameSelect = (game: Game) => {
@@ -338,66 +359,86 @@ const GamesScreen: React.FC = () => {
       quizData: quiz
     };
   });
-  
-  // Combine local games with API quizzes
-  const allGames = [...GAMES, ...apiQuizGames];
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView>
+      <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Text style={styles.title}>Fun & Games</Text>
+          <Text style={styles.title}>Quizzes</Text>
           <View style={styles.pointsContainer}>
             <Text style={styles.pointsText}>{totalPoints} Points</Text>
             <MaterialCommunityIcons name="star" size={20} color="#FFD700" />
           </View>
         </View>
 
+        {/* Display Quiz Results if available */}
+        {quizResult && (
+          <View style={styles.quizResultContainer}>
+            <View style={styles.resultHeader}>
+              <MaterialCommunityIcons name="trophy" size={24} color="#FFD700" />
+              <Text style={styles.resultTitle}>Latest Quiz Result</Text>
+            </View>
+            <View style={styles.resultDetails}>
+              <View style={styles.resultItem}>
+                <Text style={styles.resultLabel}>Score:</Text>
+                <Text style={styles.resultValue}>{quizResult.score}/{quizResult.maxScore}</Text>
+              </View>
+              <View style={styles.resultItem}>
+                <Text style={styles.resultLabel}>Percentage:</Text>
+                <Text style={styles.resultValue}>{quizResult.percentageScore}%</Text>
+              </View>
+              <View style={styles.resultItem}>
+                <Text style={styles.resultLabel}>Points Earned:</Text>
+                <Text style={styles.resultValue}>+{pointsEarned}</Text>
+              </View>
+              <View style={styles.resultItem}>
+                <Text style={styles.resultLabel}>Current Streak:</Text>
+                <Text style={styles.resultValue}>{currentStreak} days</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
         <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
+          <View style={[styles.statCard, styles.statCardShadow]}>
             <MaterialCommunityIcons name="gamepad-variant" size={24} color="#6A1B9A" />
             <Text style={styles.statValue}>{totalGamesPlayed}</Text>
-            <Text style={styles.statLabel}>Games Played</Text>
+            <Text style={styles.statLabel}>Quizzes Available</Text>
+            <View style={styles.statDecoration}>
+              <MaterialCommunityIcons name="gamepad-square-outline" size={12} color="#E1BEE7" />
+            </View>
           </View>
-          <View style={styles.statCard}>
+          <View style={[styles.statCard, styles.statCardShadow]}>
             <MaterialCommunityIcons name="trophy" size={24} color="#6A1B9A" />
             <Text style={styles.statValue}>
-              {ACHIEVEMENTS.filter(a => a.isUnlocked).length}/{ACHIEVEMENTS.length}
+              {pointsEarned || 0}
             </Text>
-            <Text style={styles.statLabel}>Achievements</Text>
+            <Text style={styles.statLabel}>Points Earned</Text>
+            <View style={[styles.statDecoration, { right: 8 }]}>
+              <MaterialCommunityIcons name="medal-outline" size={12} color="#E1BEE7" />
+            </View>
           </View>
-          <View style={styles.statCard}>
-            <MaterialCommunityIcons name="star" size={24} color="#6A1B9A" />
+          <View style={[styles.statCard, styles.statCardShadow]}>
+            <MaterialCommunityIcons name="fire" size={24} color="#6A1B9A" />
             <Text style={styles.statValue}>
-              {Math.round(GAMES.reduce((sum, game) => sum + (game.bestScore || 0), 0) / GAMES.length)}%
+              {currentStreak || 0}
             </Text>
-            <Text style={styles.statLabel}>Avg. Score</Text>
+            <Text style={styles.statLabel}>Day Streak</Text>
+            <View style={[styles.statDecoration, { bottom: 8 }]}>
+              <MaterialCommunityIcons name="star-outline" size={12} color="#E1BEE7" />
+            </View>
           </View>
-        </View>
-
-        <View style={styles.achievementsSection}>
-          <Text style={styles.sectionTitle}>My Achievements</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.achievementsContainer}>
-            {ACHIEVEMENTS.map(achievement => (
-              <AchievementIcon key={achievement.id} achievement={achievement} />
-            ))}
-          </ScrollView>
         </View>
 
         <View style={styles.gamesSection}>
-          <Text style={styles.sectionTitle}>Available Games</Text>
+          <Text style={styles.sectionTitle}>
+            Available Quizzes
+            <MaterialCommunityIcons name="gamepad-variant" size={24} color="#6A1B9A" style={{ marginLeft: 8 }} />
+          </Text>
           
-          {loading && (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#6A1B9A" />
-              <Text style={styles.loadingText}>Loading games and quizzes...</Text>
-            </View>
-          )}
-          
-          {error && (
+          {loading ? (
+            <LoadingState />
+          ) : error ? (
             <View style={styles.errorContainer}>
               <MaterialCommunityIcons name="alert-circle" size={40} color="#F44336" />
               <Text style={styles.errorText}>Failed to load quizzes: {error}</Text>
@@ -406,16 +447,23 @@ const GamesScreen: React.FC = () => {
                 onPress={() => dispatch(fetchQuizzes())}
               >
                 <Text style={styles.retryButtonText}>Retry</Text>
+                <MaterialCommunityIcons name="refresh" size={16} color="white" style={{ marginLeft: 4 }} />
               </TouchableOpacity>
             </View>
+          ) : apiQuizGames.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <MaterialCommunityIcons name="information-outline" size={48} color="#6A1B9A" />
+              <Text style={styles.emptyText}>No quizzes available yet</Text>
+            </View>
+          ) : (
+            apiQuizGames.map(game => (
+              <GameCard 
+                key={`quiz-${game.id}`} 
+                game={game} 
+                onPress={() => handleGameSelect(game)}
+              />
+            ))
           )}
-          {apiQuizGames.map(game => (
-            <GameCard 
-              key={`${game.isQuiz ? 'quiz' : 'game'}-${game.id}`} 
-              game={game} 
-              onPress={() => handleGameSelect(game)}
-            />
-          ))}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -488,63 +536,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     textAlign: 'center',
-  },
-  achievementsSection: {
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 16,
-  },
-  achievementsContainer: {
-    flexDirection: 'row',
-    gap: 16,
-    paddingRight: 16,
-  },
-  achievementContainer: {
-    alignItems: 'center',
-    gap: 8,
-    width: 80,
-  },
-  achievementIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F0E6FA',
-  },
-  achievementPoints: {
-    position: 'absolute',
-    bottom: -4,
-    right: -4,
-    backgroundColor: '#6A1B9A',
-    borderRadius: 10,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-  },
-  achievementPointsText: {
-    fontSize: 10,
-    color: '#FFF',
-    fontWeight: 'bold',
-  },
-  achievementTitle: {
-    fontSize: 12,
-    color: '#333',
-    textAlign: 'center',
-  },
-  achievementProgress: {
-    width: '100%',
-    height: 3,
-    backgroundColor: '#E0E0E0',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  achievementProgressBar: {
-    height: '100%',
-    borderRadius: 2,
   },
   gamesSection: {
     padding: 16,
@@ -689,7 +680,111 @@ const styles = StyleSheet.create({
   retryButtonText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
-  }
+  },
+  quizResultContainer: {
+    backgroundColor: '#FFF',
+    margin: 16,
+    marginTop: 0,
+    marginBottom: 8,
+    borderRadius: 12,
+    padding: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#6A1B9A',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  resultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  resultTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginLeft: 8,
+  },
+  resultDetails: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  resultItem: {
+    width: '48%',
+    marginBottom: 8,
+  },
+  resultLabel: {
+    fontSize: 12,
+    color: '#666',
+  },
+  resultValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#6A1B9A',
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 16,
+  },
+  decorElement: {
+    position: 'absolute',
+    width: 30,
+    height: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    borderRadius: 15,
+    zIndex: 1,
+  },
+  sparkle: {
+    position: 'absolute',
+    top: -5,
+    right: 10,
+  },
+  playButtonIcon: {
+    marginLeft: 4,
+  },
+  statDecoration: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    opacity: 0.5,
+  },
+  statCardShadow: {
+    ...Platform.select({
+      ios: {
+        shadowColor: '#6A1B9A',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  emptyContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+  },
+  emptyText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+  },
 });
 
 export default GamesScreen;

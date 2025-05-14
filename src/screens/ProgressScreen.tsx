@@ -9,10 +9,10 @@ const { width } = Dimensions.get('window');
 const ProgressScreen = () => {
   const navigation = useNavigation();
   const subjects = [
-    { name: 'Math', progress: 75, color: '#4287f5' },
-    { name: 'Science', progress: 60, color: '#2ecc71' },
-    { name: 'Reading', progress: 90, color: '#9b59b6' },
-    { name: 'Social Studies', progress: 45, color: '#f1c40f' },
+    { name: 'Myself and My Family', progress: 75, color: '#4287f5' },
+    { name: 'Our School and Community', progress: 60, color: '#2ecc71' },
+    { name: 'My Environment', progress: 90, color: '#9b59b6' },
+    { name: 'Time and Festivals', progress: 45, color: '#f1c40f' },
   ];
 
   const weeklyData = {

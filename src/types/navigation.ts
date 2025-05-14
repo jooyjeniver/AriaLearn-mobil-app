@@ -66,6 +66,13 @@ export type MainStackParamList = {
   QuizGameScreen: undefined;
   EmotionCapture: undefined;
   EmotionChart: undefined;
+  SubjectDetails: {
+    subjectId: string;
+    subjectName: string;
+    subjectColor?: string;
+    subjectIcon?: string;
+  };
+  ARLearn: undefined;
 };
 
 export interface User {

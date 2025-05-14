@@ -186,17 +186,17 @@ const ModelCard = React.memo(({ model, isSelected, onPress }: ModelCardProps) =>
   const iconName = useMemo(() => getModelIcon(model), [model]);
   
   return (
-    <TouchableOpacity
-      style={[styles.modelCard, isSelected && styles.selectedModelCard]}
-      onPress={onPress}>
-      <MaterialCommunityIcons 
-        name={iconName} 
-        size={40} 
-        color={isSelected ? '#6A1B9A' : '#666666'} 
-        style={styles.cardIcon} 
-      />
+  <TouchableOpacity
+    style={[styles.modelCard, isSelected && styles.selectedModelCard]}
+    onPress={onPress}>
+    <MaterialCommunityIcons 
+      name={iconName} 
+      size={40} 
+      color={isSelected ? '#6A1B9A' : '#666666'} 
+      style={styles.cardIcon} 
+    />
       <Text style={[styles.modelTitle, isSelected && styles.selectedModelTitle]}>{model.name}</Text>
-    </TouchableOpacity>
+  </TouchableOpacity>
   );
 });
 
@@ -550,7 +550,7 @@ const ARScene: React.FC<ARSceneProps> = ({ model, scale, rotation, onError, onTr
         width={2}
         height={0.5}
         position={[0, -0.7, -1]}
-        scale={[0.5, 0.5, 0.5]}
+          scale={[0.5, 0.5, 0.5]}
         style={{ fontSize: 16, color: 'white', textAlignVertical: 'center', textAlign: 'center' }}
       />
 
@@ -587,24 +587,24 @@ const InfoModal = React.memo(({ isVisible, model, onClose }: { isVisible: boolea
   }, [model]);
 
   return (
-    <Modal visible={isVisible} transparent animationType="slide">
-      <View style={styles.modalContainer}>
-        <View style={styles.modalContent}>
+  <Modal visible={isVisible} transparent animationType="slide">
+    <View style={styles.modalContainer}>
+      <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>{model.name}</Text>
           <Text style={styles.modalDescription}>{model.description || 'No description available.'}</Text>
-          <Text style={styles.modalSubtitle}>Key Parts:</Text>
+        <Text style={styles.modalSubtitle}>Key Parts:</Text>
           {parts.map((part, index) => (
-            <View key={index} style={styles.partItem}>
-              <Text style={styles.partName}>{part.name}</Text>
-              <Text style={styles.partDescription}>{part.description}</Text>
-            </View>
-          ))}
-          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-            <Text style={styles.closeButtonText}>Close</Text>
-          </TouchableOpacity>
-        </View>
+          <View key={index} style={styles.partItem}>
+            <Text style={styles.partName}>{part.name}</Text>
+            <Text style={styles.partDescription}>{part.description}</Text>
+          </View>
+        ))}
+        <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+          <Text style={styles.closeButtonText}>Close</Text>
+        </TouchableOpacity>
       </View>
-    </Modal>
+    </View>
+  </Modal>
   );
 });
 
@@ -769,10 +769,10 @@ const ARLearnScreen: React.FC = () => {
   // Check camera permission function
   const checkCameraPermission = useCallback(async () => {
     try {
-      const permission = Platform.OS === 'ios'
-        ? PERMISSIONS.IOS.CAMERA
+      const permission = Platform.OS === 'ios' 
+        ? PERMISSIONS.IOS.CAMERA 
         : PERMISSIONS.ANDROID.CAMERA;
-        
+      
       const result = await check(permission);
       
       if (result === RESULTS.GRANTED) {
@@ -788,7 +788,7 @@ const ARLearnScreen: React.FC = () => {
       setHasCameraPermission(false);
     }
   }, []);
-  
+
   // Immediately fetch models on mount
   useEffect(() => {
     dispatch(fetchARModels());
@@ -823,7 +823,7 @@ const ARLearnScreen: React.FC = () => {
       backHandler.remove();
     };
   }, []);
-  
+
   // Function to safely navigate back
   const handleBackPress = useCallback(() => {
     setArViewActive(false);
@@ -1071,7 +1071,7 @@ const ARLearnScreen: React.FC = () => {
             </Text>
             <TouchableOpacity onPress={() => setShowInfo(true)} style={styles.infoButton}>
               <MaterialCommunityIcons name="information-outline" size={22} color="#6A1B9A" />
-            </TouchableOpacity>
+          </TouchableOpacity>
           </View>
         </View>
 
@@ -1099,10 +1099,10 @@ const ARLearnScreen: React.FC = () => {
                 }, 500);
               }}
             >
-              <ViroARSceneNavigator
+          <ViroARSceneNavigator
                 key={`ar-nav-${resetKey}`} // Use only resetKey to ensure complete recreation
-                autofocus={true}
-                initialScene={{
+            autofocus={true}
+            initialScene={{
                   scene: () => {
                     try {
                       // Safe model preparation outside of ARScene to avoid URL constructor issues
@@ -1170,13 +1170,13 @@ const ARLearnScreen: React.FC = () => {
                       );
                     }
                   },
-                }}
-                style={styles.arView}
+            }}
+            style={styles.arView}
                 viroAppProps={{
                   safeModel: currentModel ? createSafeModelSource(currentModel) : null,
                   resetKey: resetKey
                 }}
-              />
+          />
             </ARErrorBoundary>
           )}
         </View>
@@ -1236,11 +1236,11 @@ const ARLearnScreen: React.FC = () => {
 
         {/* Info Modal */}
         {currentModel && (
-          <InfoModal
-            isVisible={showInfo}
+        <InfoModal
+          isVisible={showInfo}
             model={currentModel}
             onClose={() => setShowInfo(false)}
-          />
+        />
         )}
       </SafeAreaView>
     </ErrorBoundary>
@@ -1588,11 +1588,11 @@ const styles = StyleSheet.create({
 
 // Register spinner material
 try {
-  ViroAnimations.registerAnimations({
-    rotate: {
-      properties: {
-        rotateY: "+=90"
-      },
+ViroAnimations.registerAnimations({
+  rotate: {
+    properties: {
+      rotateY: "+=90"
+    },
       duration: 3000,
     },
     // Add loading spinner animation

@@ -18,11 +18,11 @@ import { EmotionValues } from '../hooks/useEmotionAnalyzer';
 const emotionConfig = {
   happiness: { icon: 'emoticon-happy-outline', color: '#4CAF50', label: 'Happy' },
   neutral: { icon: 'emoticon-neutral-outline', color: '#9E9E9E', label: 'Neutral' },
-  surprise: { icon: 'emoticon-surprised-outline', color: '#2196F3', label: 'Surprised' },
+  surprise: { icon: 'emoticon-excited-outline', color: '#FF9800', label: 'Surprised' },
   sadness: { icon: 'emoticon-sad-outline', color: '#607D8B', label: 'Sad' },
   anger: { icon: 'emoticon-angry-outline', color: '#F44336', label: 'Angry' },
   disgust: { icon: 'emoticon-sick-outline', color: '#795548', label: 'Disgusted' },
-  fear: { icon: 'emoticon-scared-outline', color: '#9C27B0', label: 'Fearful' },
+  fear: { icon: 'emoticon-frown-outline', color: '#9C27B0', label: 'Fearful' },
 };
 
 type EmotionKey = keyof typeof emotionConfig;
